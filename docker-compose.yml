@@ -61,6 +61,44 @@ services:
     depends_on: [api, mosquitto]
     networks: [cctvbot]
 
+  # Frigate: RTSP ingest + detect + record. MQTT → mosquitto → event-worker.
+  # School GPU (NVIDIA): use image stable-tensorrt + uncomment deploy/gpus below.
+  # Windows/Laragon CPU-only: image stable, comment hwaccel in frigate/config.yml,
+  #   and use detectors.cpu (see config comments).
+  frigate:
+    container_name: cctvbot-frigate
+    image: ghcr.io/blakeblackshear/frigate:stable
+    # For NVIDIA school box:
+    # image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
+    restart: unless-stopped
+    stop_grace_period: 30s
+    shm_size: "256mb" # ~4 cameras @ 720p detect; raise if Bus error
+    env_file: .env
+    environment:
+      FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD:-}
+      TZ: Asia/Bangkok
+    volumes:
+      - ./frigate:/config
+      - ./data/frigate:/media/frigate
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    # Port 5000 is unauthenticated — LAN admin only; do not public port-forward.
+    ports:
+      - "5000:5000"
+    depends_on: [mosquitto]
+    networks: [cctvbot]
+    # Uncomment on NVIDIA host with nvidia-container-toolkit:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    # runtime: nvidia
+
 networks:
   cctvbot:
     driver: bridge
