@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.auth import seed_users
 from app.config import settings
 from app.db import SessionLocal, init_db
-from app.routers import auth_router
+from app.routers import auth_router, cameras, events
 
 
 @asynccontextmanager
@@ -32,6 +32,8 @@ app.add_middleware(
 )
 
 app.include_router(auth_router.router)
+app.include_router(events.router)
+app.include_router(cameras.router)
 
 
 @app.get("/health")

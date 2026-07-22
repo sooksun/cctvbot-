@@ -16,3 +16,56 @@ def client():
 
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def admin_headers(client: TestClient) -> dict:
+    r = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin123!"},
+    )
+    assert r.status_code == 200
+    token = r.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def sample_event(client: TestClient) -> str:
+    import uuid
+
+    event_id = f"EVT-TEST-{uuid.uuid4().hex[:8].upper()}"
+    payload = {
+        "event_id": event_id,
+        "schema_version": "1.0",
+        "source": "cctvbot",
+        "camera": {
+            "camera_id": "cam_front_gate",
+            "name": "ประตูหน้า",
+            "stream_type": "ip_rtsp",
+            "zone": "entrance",
+        },
+        "event_type": "person_after_hours",
+        "severity": "medium",
+        "status": "pending_review",
+        "confidence": 0.9,
+        "started_at": "2026-07-23T15:00:00+07:00",
+        "ended_at": None,
+        "detected_at": "2026-07-23T15:00:05+07:00",
+        "rule": {"code": "person_after_hours", "name": "บุคคลนอกเวลา", "params": {}},
+        "objects": [],
+        "evidence": {
+            "thumb": "thumb.jpg",
+            "clip": "clip.mp4",
+            "clip_before_seconds": 30,
+            "clip_after_seconds": 30,
+            "relative_path": f"events/{event_id}/",
+        },
+        "message_th": "พบเหตุที่ควรตรวจสอบ",
+    }
+    r = client.post(
+        "/api/events",
+        json=payload,
+        headers={"X-System-Token": "test-system-token"},
+    )
+    assert r.status_code == 201
+    return event_id
