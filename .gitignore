@@ -8,6 +8,8 @@ data/frigate/*
 data/config/*
 !data/config/.gitkeep
 !data/config/cameras.example.yml
+!data/config/schedule.yml
+!data/config/rules.yml
 **/__pycache__/
 **/.venv/
 **/node_modules/

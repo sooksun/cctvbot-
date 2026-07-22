@@ -1,0 +1,33 @@
+# School rule defaults (design MVP thresholds).
+# camera_id keys must match Frigate camera names / cameras.example.yml.
+
+# Rule 1 — restricted polygons (Frigate zone names)
+restricted_zones:
+  gate_front: [restricted]
+  yard_1: [restricted]
+  building_a: [restricted]
+  hall_1: [restricted]
+
+# Rule 5 — camera health
+offline_threshold_seconds: 30
+luminance_threshold: 10.0
+luminance_streak: 3
+
+# Rule 2 — fall / still person
+fall_still_seconds: 15.0
+fall_aspect_threshold: 1.2
+
+# Rule 7 — abnormal motion / crowd
+run_speed_threshold: 0.15
+crowd_threshold: 5
+
+# Rule 8 — possible littering (higher FP risk; review carefully)
+littering_enabled: true
+litter_zone: litter_watch
+litter_min_seconds: 3.0
+litter_max_seconds: 8.0
+
+# Rule 9 — possible fight (higher FP risk)
+fight_person_min: 2
+fight_motion_seconds: 3.0
+fight_speed_threshold: 0.12

@@ -1,0 +1,11 @@
+# School closed windows (Asia/Bangkok).
+# Used by event-worker person_after_hours rule via is_school_closed().
+# Weekday windows may span midnight (start > end).
+
+timezone: "Asia/Bangkok"
+
+school_closed:
+  weekdays:
+    - start: "18:00"
+      end: "06:00"
+  weekends: "all_day"
