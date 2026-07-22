@@ -32,6 +32,35 @@ services:
         condition: service_healthy
     networks: [cctvbot]
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ["1883:1883"]
+    # allow anonymous LAN clients (Frigate + event-worker)
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "echo 'listener 1883\nallow_anonymous true\n' > /tmp/mosquitto.conf && mosquitto -c /tmp/mosquitto.conf",
+      ]
+    networks: [cctvbot]
+
+  event-worker:
+    build: ./apps/event-worker
+    env_file: .env
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-http://api:8000}
+      SYSTEM_API_TOKEN: ${SYSTEM_API_TOKEN}
+      EVIDENCE_ROOT: /data/events
+      CONFIG_DIR: /config
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      FRIGATE_BASE_URL: ${FRIGATE_BASE_URL:-http://frigate:5000}
+    volumes:
+      - ./data/events:/data/events
+      - ./data/config:/config
+    depends_on: [api, mosquitto]
+    networks: [cctvbot]
+
 networks:
   cctvbot:
     driver: bridge
