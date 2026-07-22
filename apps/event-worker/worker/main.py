@@ -40,6 +40,21 @@ DEFAULT_RULES: dict[str, Any] = {
     "offline_threshold_seconds": 30,
     "luminance_threshold": 10.0,
     "luminance_streak": 3,
+    # Rule 2 fall
+    "fall_still_seconds": 15.0,
+    "fall_aspect_threshold": 1.2,
+    # Rule 7 motion / crowd
+    "run_speed_threshold": 0.15,
+    "crowd_threshold": 5,
+    # Rule 8 littering
+    "littering_enabled": True,
+    "litter_zone": "litter_watch",
+    "litter_min_seconds": 3.0,
+    "litter_max_seconds": 8.0,
+    # Rule 9 fight
+    "fight_person_min": 2,
+    "fight_motion_seconds": 3.0,
+    "fight_speed_threshold": 0.12,
 }
 
 

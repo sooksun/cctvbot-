@@ -1,4 +1,4 @@
-"""School CCTV detection rules (1, 5 for Task 6; more in later tasks)."""
+"""School CCTV detection rules (MVP rules 1, 2, 5, 7, 8, 9)."""
 
 from worker.rules.base import RuleResult
 

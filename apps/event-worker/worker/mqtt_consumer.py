@@ -12,9 +12,16 @@ from zoneinfo import ZoneInfo
 from worker.api_client import ApiClient
 from worker.debounce import Debouncer
 from worker.evidence import build_event_id, write_evidence
+from worker.rules.abnormal_motion import (
+    evaluate_abnormal_crowd,
+    evaluate_abnormal_motion,
+)
 from worker.rules.base import RuleResult
 from worker.rules.camera_health import OfflineTracker, evaluate_tamper_signal
+from worker.rules.fight import FightTracker, evaluate_possible_fight
+from worker.rules.littering import LitteringTracker, evaluate_possible_littering
 from worker.rules.person_after_hours import evaluate_person_after_hours
+from worker.rules.person_fall import FallTracker, evaluate_person_fall
 from worker.rules.person_restricted import evaluate_person_restricted
 
 logger = logging.getLogger(__name__)
@@ -79,6 +86,12 @@ def normalize_frigate_event(msg: dict[str, Any], tz: ZoneInfo) -> dict[str, Any]
     ended_at = _ts_to_dt(end_ts, tz) if end_ts is not None else None
 
     zones = after.get("current_zones") or after.get("entered_zones") or msg.get("zones") or []
+    box = after.get("box") or msg.get("box")
+    if box is not None:
+        try:
+            box = [float(v) for v in box[:4]]
+        except (TypeError, ValueError):
+            box = None
 
     return {
         "camera_id": str(camera) if camera else "unknown",
@@ -87,6 +100,7 @@ def normalize_frigate_event(msg: dict[str, Any], tz: ZoneInfo) -> dict[str, Any]
         "score": float(after.get("top_score") or after.get("score") or 0.0),
         "zones": list(zones),
         "current_zones": list(zones),
+        "box": box,
         "track_id": after.get("id") or after.get("track_id"),
         "started_at": started_at,
         "current_at": datetime.now(tz),
@@ -95,6 +109,26 @@ def normalize_frigate_event(msg: dict[str, Any], tz: ZoneInfo) -> dict[str, Any]
         "false_positive": bool(after.get("false_positive")),
         "frigate_type": event_type,
         "frame_time": after.get("frame_time"),
+        "speed": after.get("speed") if after.get("speed") is not None else msg.get("speed"),
+        "nearby_person_count": (
+            after.get("nearby_person_count")
+            if after.get("nearby_person_count") is not None
+            else msg.get("nearby_person_count")
+        ),
+        "objects": msg.get("objects") or after.get("objects") or [],
+        "pose_fallen": bool(after.get("pose_fallen") or msg.get("pose_fallen")),
+        "still_duration_s": after.get("still_duration_s") or msg.get("still_duration_s"),
+        "high_motion_duration_s": (
+            after.get("high_motion_duration_s") or msg.get("high_motion_duration_s")
+        ),
+        "relative_speed": after.get("relative_speed") or msg.get("relative_speed"),
+        "high_relative_motion": bool(
+            after.get("high_relative_motion") or msg.get("high_relative_motion")
+        ),
+        "drop_duration_s": after.get("drop_duration_s") or msg.get("drop_duration_s"),
+        "downward_delta": after.get("downward_delta") or msg.get("downward_delta"),
+        "in_litter_zone": after.get("in_litter_zone") or msg.get("in_litter_zone"),
+        "person_present": after.get("person_present") or msg.get("person_present"),
     }
 
 
@@ -174,6 +208,9 @@ class EventPipeline:
         rules_config: dict[str, Any],
         timezone_name: str = "Asia/Bangkok",
         offline_tracker: OfflineTracker | None = None,
+        fall_tracker: FallTracker | None = None,
+        littering_tracker: LitteringTracker | None = None,
+        fight_tracker: FightTracker | None = None,
         now_fn: Callable[[], datetime] | None = None,
     ) -> None:
         self.evidence_root = Path(evidence_root)
@@ -183,6 +220,18 @@ class EventPipeline:
         self.rules_config = rules_config
         self.tz = ZoneInfo(timezone_name)
         self.offline_tracker = offline_tracker or OfflineTracker()
+        self.fall_tracker = fall_tracker or FallTracker(
+            still_seconds=float(rules_config.get("fall_still_seconds", 15.0)),
+            aspect_threshold=float(rules_config.get("fall_aspect_threshold", 1.2)),
+        )
+        self.littering_tracker = littering_tracker or LitteringTracker(
+            enabled=bool(rules_config.get("littering_enabled", True)),
+        )
+        self.fight_tracker = fight_tracker or FightTracker(
+            person_min=int(rules_config.get("fight_person_min", 2)),
+            motion_seconds=float(rules_config.get("fight_motion_seconds", 3.0)),
+            speed_threshold=float(rules_config.get("fight_speed_threshold", 0.12)),
+        )
         self._now_fn = now_fn
 
     def _now(self) -> datetime:
@@ -215,7 +264,7 @@ class EventPipeline:
         if tamper is not None:
             results.append(tamper)
 
-        # Person rules (only on new/update with person label; skip pure end noise)
+        # Detection rules (new/update; skip pure end noise)
         frigate_type = detection.get("frigate_type")
         if detection.get("label") and frigate_type != "end":
             after_hours = evaluate_person_after_hours(
@@ -229,6 +278,39 @@ class EventPipeline:
             )
             if restricted is not None:
                 results.append(restricted)
+
+            # Rule 2 — fall (stateless metrics and/or sequence tracker)
+            fall = evaluate_person_fall(detection, now, self.rules_config)
+            if fall is None:
+                fall = self.fall_tracker.update(detection, now)
+            if fall is not None:
+                results.append(fall)
+
+            # Rule 7 — motion + crowd
+            motion = evaluate_abnormal_motion(detection, now, self.rules_config)
+            if motion is not None:
+                results.append(motion)
+            crowd = evaluate_abnormal_crowd(detection, now, self.rules_config)
+            if crowd is not None:
+                results.append(crowd)
+
+            # Rule 8 — littering (proxy objects; None if person-only model)
+            litter = evaluate_possible_littering(detection, now, self.rules_config)
+            if litter is None:
+                litter = self.littering_tracker.update(
+                    detection, now, self.rules_config
+                )
+            if litter is not None:
+                results.append(litter)
+
+            # Rule 9 — fight
+            fight = evaluate_possible_fight(detection, now, self.rules_config)
+            if fight is None:
+                fight = self.fight_tracker.update(
+                    detection, now, self.rules_config
+                )
+            if fight is not None:
+                results.append(fight)
 
         return self._emit_results(results, now)
 
