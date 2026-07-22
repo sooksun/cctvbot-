@@ -1,0 +1,6 @@
+services: {}
+networks:
+  cctvbot:
+    driver: bridge
+volumes:
+  mysql_data:
