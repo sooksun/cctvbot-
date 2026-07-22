@@ -357,6 +357,22 @@ class EventPipeline:
                 event_id,
                 self.evidence_root / event_id,
             )
+        else:
+            # Explicit camera status update after successful offline emit
+            # (API create also sets is_online from event_type; this is belt-and-suspenders).
+            if result.event_type == "camera_offline":
+                try:
+                    self.api.put_camera_status(
+                        result.camera_id,
+                        is_online=False,
+                        name=result.camera_name or result.camera_id,
+                        zone=result.zone,
+                    )
+                except Exception:
+                    logger.exception(
+                        "put_camera_status offline failed for %s",
+                        result.camera_id,
+                    )
         return event_id
 
 

@@ -7,6 +7,7 @@ import AuthGate from "@/components/AuthGate";
 import AppHeader from "@/components/AppHeader";
 import {
   Event,
+  fetchEvidenceFileBlobUrl,
   getEvent,
   getEvidence,
   isAdmin,
@@ -33,6 +34,7 @@ function EventDetailContent() {
     relative_path: string;
     paths: Record<string, string | null>;
   } | null>(null);
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +45,10 @@ function EventDetailContent() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setThumbUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     try {
       const ev = await getEvent(eventId);
       setEvent(ev);
@@ -55,6 +61,14 @@ function EventDetailContent() {
             relative_path: meta.relative_path,
             paths: meta.paths,
           });
+          if (meta.thumb === "thumb.jpg" || meta.thumb) {
+            try {
+              const url = await fetchEvidenceFileBlobUrl(eventId, "thumb.jpg");
+              setThumbUrl(url);
+            } catch {
+              setThumbUrl(null);
+            }
+          }
         } catch {
           setEvidenceMeta(null);
         }
@@ -68,6 +82,12 @@ function EventDetailContent() {
 
   useEffect(() => {
     void load();
+    return () => {
+      setThumbUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
   }, [load]);
 
   async function onReview(
@@ -220,21 +240,37 @@ function EventDetailContent() {
                 หลักฐาน
               </h2>
               {event.evidence ? (
-                <ul className="mt-3 space-y-1 text-sm text-slate-600">
-                  <li>
-                    โฟลเดอร์:{" "}
-                    <code className="text-xs">
-                      {event.evidence.relative_path || "-"}
-                    </code>
-                  </li>
-                  <li>ภาพย่อ: {event.evidence.thumb || "-"}</li>
-                  <li>คลิป: {event.evidence.clip || "-"}</li>
-                  {evidenceMeta?.paths?.thumb ? (
-                    <li className="text-xs text-slate-400">
-                      เส้นทางเซิร์ฟเวอร์ (admin): {evidenceMeta.paths.thumb}
-                    </li>
+                <div className="mt-3 space-y-3">
+                  {thumbUrl ? (
+                    <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={thumbUrl}
+                        alt="ภาพย่อหลักฐาน"
+                        className="max-h-72 w-full object-contain"
+                      />
+                    </div>
+                  ) : admin && event.evidence.thumb ? (
+                    <p className="text-xs text-slate-400">
+                      ไม่พบไฟล์ภาพย่อบนเซิร์ฟเวอร์
+                    </p>
                   ) : null}
-                </ul>
+                  <ul className="space-y-1 text-sm text-slate-600">
+                    <li>
+                      โฟลเดอร์:{" "}
+                      <code className="text-xs">
+                        {event.evidence.relative_path || "-"}
+                      </code>
+                    </li>
+                    <li>ภาพย่อ: {event.evidence.thumb || "-"}</li>
+                    <li>คลิป: {event.evidence.clip || "-"}</li>
+                    {evidenceMeta?.paths?.thumb ? (
+                      <li className="text-xs text-slate-400">
+                        เส้นทางเซิร์ฟเวอร์ (admin): {evidenceMeta.paths.thumb}
+                      </li>
+                    ) : null}
+                  </ul>
+                </div>
               ) : (
                 <p className="mt-2 text-sm text-slate-500">ไม่มีข้อมูลหลักฐาน</p>
               )}

@@ -157,3 +157,55 @@ def test_review_confirm_audits_send_line(
 
     assert "review_confirm" in actions
     assert "send_line" in actions
+
+
+def test_review_confirm_commits_when_line_fails(
+    client: TestClient, admin_headers: dict, sample_event: str, monkeypatch
+):
+    """LINE push failure must not roll back confirmed review."""
+    from app.config import settings
+    from app.db import SessionLocal
+    from app.models import AuditLog, Event
+
+    monkeypatch.setattr(settings, "line_channel_access_token", "tok")
+    monkeypatch.setattr(settings, "line_user_id", "uid")
+
+    with patch(
+        "app.routers.events.send_line_text",
+        side_effect=httpx.HTTPStatusError(
+            "LINE down",
+            request=httpx.Request("POST", "https://api.line.me/v2/bot/message/push"),
+            response=httpx.Response(500),
+        ),
+    ) as mock_send:
+        r = client.patch(
+            f"/api/events/{sample_event}/review",
+            json={"decision": "confirmed", "note": "still save"},
+            headers=admin_headers,
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "confirmed"
+    assert body["review"]["decision"] == "confirmed"
+    assert body["review"]["note"] == "still save"
+    assert body["notifications"]["line_sent"] is False
+    assert body["notifications"]["line_sent_at"] is None
+    mock_send.assert_called_once()
+
+    db = SessionLocal()
+    try:
+        event = db.query(Event).filter(Event.event_id == sample_event).first()
+        assert event is not None
+        assert event.status == "confirmed"
+        actions = [
+            a.action
+            for a in db.query(AuditLog)
+            .filter(AuditLog.event_id == sample_event)
+            .all()
+        ]
+    finally:
+        db.close()
+
+    assert "review_confirm" in actions
+    assert "send_line" not in actions

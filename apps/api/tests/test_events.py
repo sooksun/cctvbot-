@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 
@@ -124,3 +126,110 @@ def test_review_false_positive(
     )
     assert r.status_code == 200
     assert r.json()["status"] == "false_positive"
+
+
+def test_create_camera_offline_sets_is_online_false(
+    client: TestClient, admin_headers: dict
+):
+    payload = _minimal_event_payload("EVT-OFFLINE-0001")
+    payload["event_type"] = "camera_offline"
+    payload["severity"] = "critical"
+    payload["rule"] = {
+        "code": "camera_offline",
+        "name": "กล้องออฟไลน์",
+        "params": {},
+    }
+    payload["camera"] = {
+        "camera_id": "cam_offline_1",
+        "name": "กล้องออฟไลน์",
+        "stream_type": "ip_rtsp",
+        "zone": "yard",
+    }
+    r = client.post(
+        "/api/events",
+        json=payload,
+        headers={"X-System-Token": "test-system-token"},
+    )
+    assert r.status_code == 201
+
+    cams = client.get("/api/cameras", headers=admin_headers)
+    assert cams.status_code == 200
+    cam = next(c for c in cams.json() if c["camera_id"] == "cam_offline_1")
+    assert cam["is_online"] is False
+
+
+def test_create_rejects_path_traversal_relative_path(client: TestClient):
+    payload = _minimal_event_payload("EVT-TRAVERSAL-0001")
+    payload["evidence"]["relative_path"] = "../../etc/passwd"
+    r = client.post(
+        "/api/events",
+        json=payload,
+        headers={"X-System-Token": "test-system-token"},
+    )
+    assert r.status_code == 400
+
+
+def test_evidence_rejects_path_traversal_on_get(
+    client: TestClient, admin_headers: dict, sample_event: str, monkeypatch
+):
+    """get_evidence rejects stored relative_path that escapes evidence_root."""
+    from app.db import SessionLocal
+    from app.models import Event
+
+    db = SessionLocal()
+    try:
+        event = db.query(Event).filter(Event.event_id == sample_event).first()
+        assert event is not None
+        evidence = dict(event.evidence_json or {})
+        evidence["relative_path"] = "../../../Windows/System32"
+        event.evidence_json = evidence
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.get(f"/api/events/{sample_event}/evidence", headers=admin_headers)
+    assert r.status_code == 400
+
+
+def test_evidence_file_serves_thumb(
+    client: TestClient, admin_headers: dict, sample_event: str, tmp_path: Path, monkeypatch
+):
+    from app.config import settings
+    from app.db import SessionLocal
+    from app.models import Event
+
+    monkeypatch.setattr(settings, "evidence_root", str(tmp_path))
+    event_dir = tmp_path / sample_event
+    event_dir.mkdir(parents=True)
+    thumb = event_dir / "thumb.jpg"
+    thumb.write_bytes(b"\xff\xd8\xfffakejpeg")
+
+    db = SessionLocal()
+    try:
+        event = db.query(Event).filter(Event.event_id == sample_event).first()
+        assert event is not None
+        evidence = dict(event.evidence_json or {})
+        evidence["relative_path"] = sample_event
+        evidence["thumb"] = "thumb.jpg"
+        event.evidence_json = evidence
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.get(
+        f"/api/events/{sample_event}/evidence/file?name=thumb.jpg",
+        headers=admin_headers,
+    )
+    assert r.status_code == 200
+    assert r.content == b"\xff\xd8\xfffakejpeg"
+    assert "image/jpeg" in r.headers.get("content-type", "")
+
+
+def test_evidence_file_rejects_bad_name(
+    client: TestClient, admin_headers: dict, sample_event: str
+):
+    r = client.get(
+        f"/api/events/{sample_event}/evidence/file?name=../../secret.txt",
+        headers=admin_headers,
+    )
+    assert r.status_code == 400

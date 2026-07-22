@@ -197,4 +197,34 @@ export async function getEvidence(eventId: string) {
   }>(`/api/events/${encodeURIComponent(eventId)}/evidence`);
 }
 
+/** Fetch evidence binary (admin JWT) and return an object URL for <img>/<video>. */
+export async function fetchEvidenceFileBlobUrl(
+  eventId: string,
+  name: "thumb.jpg" | "clip.mp4" | "event.json",
+): Promise<string> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const res = await fetch(
+    `${API_URL}/api/events/${encodeURIComponent(eventId)}/evidence/file?name=${encodeURIComponent(name)}`,
+    { headers },
+  );
+
+  if (res.status === 401) {
+    clearSession();
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login";
+    }
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (!res.ok) {
+    throw new ApiError(res.status, res.statusText || "Failed to load evidence file");
+  }
+
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 export { ApiError, API_URL };

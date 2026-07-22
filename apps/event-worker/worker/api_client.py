@@ -28,6 +28,26 @@ class ApiClient:
         response = self._client.post("/api/events", json=payload)
         response.raise_for_status()
 
+    def put_camera_status(
+        self,
+        camera_id: str,
+        *,
+        is_online: bool,
+        name: str | None = None,
+        zone: str | None = None,
+        stream_type: str | None = None,
+    ) -> None:
+        """PUT /api/cameras/{camera_id} with system token (online/offline status)."""
+        body: dict[str, Any] = {"is_online": is_online}
+        if name is not None:
+            body["name"] = name
+        if zone is not None:
+            body["zone"] = zone
+        if stream_type is not None:
+            body["stream_type"] = stream_type
+        response = self._client.put(f"/api/cameras/{camera_id}", json=body)
+        response.raise_for_status()
+
     def close(self) -> None:
         self._client.close()
 
