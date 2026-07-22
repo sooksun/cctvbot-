@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
@@ -9,6 +10,7 @@ from app.audit import write_audit
 from app.auth import require_roles, verify_system_token
 from app.config import settings
 from app.db import get_db
+from app.line_notify import build_line_text_for_event, send_line_text
 from app.models import Camera, Event, User
 from app.schemas import (
     EventCreate,
@@ -16,6 +18,8 @@ from app.schemas import (
     EvidenceResponse,
     ReviewRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -192,6 +196,39 @@ def review_event(
         ip=_client_ip(request),
         note=body.note,
     )
+
+    notifications = dict(
+        event.notifications_json
+        or {"dashboard": True, "line_sent": False, "line_sent_at": None}
+    )
+
+    if body.decision == "confirmed":
+        token = (settings.line_channel_access_token or "").strip()
+        line_user = (settings.line_user_id or "").strip()
+        if not token or not line_user:
+            logger.warning(
+                "LINE notify skipped for %s: empty token or user_id", event_id
+            )
+            notifications["line_sent"] = False
+        else:
+            camera = (
+                db.query(Camera).filter(Camera.camera_id == event.camera_id).first()
+            )
+            camera_name = camera.name if camera else event.camera_id
+            text = build_line_text_for_event(event, camera_name)
+            send_line_text(token, line_user, text)
+            notifications["line_sent"] = True
+            notifications["line_sent_at"] = now.isoformat()
+            write_audit(
+                db,
+                who=user.username,
+                action="send_line",
+                event_id=event_id,
+                ip=_client_ip(request),
+                note="LINE text push after confirm",
+            )
+
+    event.notifications_json = notifications
     db.commit()
     db.refresh(event)
     return _event_to_response(event)
