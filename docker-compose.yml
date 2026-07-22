@@ -61,6 +61,19 @@ services:
     depends_on: [api, mosquitto]
     networks: [cctvbot]
 
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on: [api]
+    networks: [cctvbot]
+
+
   # Frigate: RTSP ingest + detect + record. MQTT → mosquitto → event-worker.
   # School GPU (NVIDIA): use image stable-tensorrt + uncomment deploy/gpus below.
   # Windows/Laragon CPU-only: image stable, comment hwaccel in frigate/config.yml,
