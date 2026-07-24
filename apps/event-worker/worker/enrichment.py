@@ -75,6 +75,17 @@ class PersonMotionEnricher:
             if cam == camera_id and st.last_seen >= cutoff
         )
 
+    def person_present(self, camera_id: Any, now: datetime) -> bool:
+        """True if any tracked person on camera_id was seen within nearby_window."""
+        if camera_id is None:
+            return False
+        cutoff = now - timedelta(seconds=self.nearby_window)
+        cam = str(camera_id)
+        return any(
+            c == cam and st.last_seen >= cutoff
+            for (c, _tid), st in self._tracks.items()
+        )
+
     def enrich(self, detection: dict[str, Any], now: datetime) -> dict[str, Any]:
         if (detection.get("label") or "").lower() != "person":
             return detection

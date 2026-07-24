@@ -77,3 +77,12 @@ def test_non_person_is_noop():
     enr.enrich(d, T0)
     assert "speed" not in d
     assert "nearby_person_count" not in d
+
+
+def test_person_present_within_window():
+    enr = PersonMotionEnricher(nearby_window_seconds=3.0)
+    enr.enrich(_person("p1", [0.1, 0.1, 0.2, 0.2], camera_id="cam-a"), T0)
+    assert enr.person_present("cam-a", T0 + timedelta(seconds=2)) is True
+    assert enr.person_present("cam-a", T0 + timedelta(seconds=5)) is False
+    assert enr.person_present("cam-b", T0) is False
+    assert enr.person_present(None, T0) is False
