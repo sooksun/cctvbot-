@@ -17,9 +17,15 @@ luminance_streak: 3
 fall_still_seconds: 15.0
 fall_aspect_threshold: 1.2
 
-# Rule 7 — abnormal motion / crowd
+# Rule 7 — abnormal motion / crowd (fed by in-worker person-motion enrichment)
 run_speed_threshold: 0.15
 crowd_threshold: 5
+
+# Person-motion enrichment (rules 7 + 9): heuristic speed / nearby count / high-motion
+person_motion_enrichment: true
+speed_ema_alpha: 0.5
+nearby_window_seconds: 3.0
+motion_track_ttl_seconds: 60.0
 
 # Rule 8 — possible littering (higher FP risk; review carefully)
 littering_enabled: true
@@ -32,8 +38,8 @@ fight_person_min: 2
 fight_motion_seconds: 3.0
 fight_speed_threshold: 0.12
 
-# Enrichment gate — Rules 7/8/9 (abnormal_motion/crowd, littering, fight) need
-# speed / nearby_person_count / multi-object / drop metrics that Frigate MQTT
-# does NOT emit by default. Keep false until an enrichment layer feeds those
-# fields; otherwise these rules can never fire in production.
+# Enrichment gate — Rule 8 littering (possible_littering) still needs object-drop
+# metrics (proxy-object centroid drop into litter_watch) that Frigate MQTT does not
+# emit. Keep false until the object-drop enrichment layer is built. Rules 7 + 9 no
+# longer depend on this flag — see person_motion_enrichment above.
 enrichment_available: false
