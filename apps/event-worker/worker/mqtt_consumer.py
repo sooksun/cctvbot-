@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from worker.api_client import ApiClient
 from worker.debounce import Debouncer
+from worker.enrichment import PersonMotionEnricher
 from worker.evidence import build_event_id, write_evidence
 from worker.rules.abnormal_motion import (
     evaluate_abnormal_crowd,
@@ -211,6 +212,7 @@ class EventPipeline:
         fall_tracker: FallTracker | None = None,
         littering_tracker: LitteringTracker | None = None,
         fight_tracker: FightTracker | None = None,
+        motion_enricher: PersonMotionEnricher | None = None,
         now_fn: Callable[[], datetime] | None = None,
     ) -> None:
         self.evidence_root = Path(evidence_root)
@@ -233,17 +235,31 @@ class EventPipeline:
             speed_threshold=float(rules_config.get("fight_speed_threshold", 0.12)),
         )
         self._now_fn = now_fn
-        # Rules 7/8/9 depend on enrichment (speed, nearby_person_count,
-        # multi-object, drop metrics) that Frigate MQTT does not emit by
-        # default. Gated off until an enrichment layer supplies those fields.
+        # Rule 8 littering still needs object-drop enrichment (proxy-object
+        # centroid drop into litter_watch) that Frigate MQTT does not emit.
         self.enrichment_available = bool(
             rules_config.get("enrichment_available", False)
         )
-        if not self.enrichment_available:
+        # Rules 7 (motion/crowd) + 9 (fight) are fed by the in-worker
+        # person-motion enricher (heuristic speed / nearby count / high motion).
+        self.person_motion_enrichment = bool(
+            rules_config.get("person_motion_enrichment", False)
+        )
+        self.motion_enricher = motion_enricher or PersonMotionEnricher(
+            speed_ema_alpha=float(rules_config.get("speed_ema_alpha", 0.5)),
+            nearby_window_seconds=float(
+                rules_config.get("nearby_window_seconds", 3.0)
+            ),
+            track_ttl_seconds=float(
+                rules_config.get("motion_track_ttl_seconds", 60.0)
+            ),
+            high_motion_speed=float(rules_config.get("fight_speed_threshold", 0.12)),
+        )
+        if not self.person_motion_enrichment:
             logger.info(
-                "enrichment_available=false — abnormal_motion/abnormal_crowd/"
-                "possible_littering/possible_fight are gated off until an "
-                "enrichment layer feeds speed/nearby_person_count/multi-object."
+                "person_motion_enrichment=false — abnormal_motion/abnormal_crowd/"
+                "possible_fight gated off; enrichment_available=%s gates littering.",
+                self.enrichment_available,
             )
 
     def _now(self) -> datetime:
@@ -298,18 +314,25 @@ class EventPipeline:
             if fall is not None:
                 results.append(fall)
 
-            # Rules 7/8/9 require enrichment fields that Frigate MQTT does not
-            # emit by default; only evaluate when an enrichment layer is present.
-            if self.enrichment_available:
-                # Rule 7 — motion + crowd
+            # Rules 7 + 9 — fed by person-motion enrichment.
+            if self.person_motion_enrichment:
+                self.motion_enricher.enrich(detection, now)
                 motion = evaluate_abnormal_motion(detection, now, self.rules_config)
                 if motion is not None:
                     results.append(motion)
                 crowd = evaluate_abnormal_crowd(detection, now, self.rules_config)
                 if crowd is not None:
                     results.append(crowd)
+                fight = evaluate_possible_fight(detection, now, self.rules_config)
+                if fight is None:
+                    fight = self.fight_tracker.update(
+                        detection, now, self.rules_config
+                    )
+                if fight is not None:
+                    results.append(fight)
 
-                # Rule 8 — littering (proxy objects; None if person-only model)
+            # Rule 8 — littering (object-drop enrichment; still gated separately).
+            if self.enrichment_available:
                 litter = evaluate_possible_littering(detection, now, self.rules_config)
                 if litter is None:
                     litter = self.littering_tracker.update(
@@ -318,14 +341,12 @@ class EventPipeline:
                 if litter is not None:
                     results.append(litter)
 
-                # Rule 9 — fight
-                fight = evaluate_possible_fight(detection, now, self.rules_config)
-                if fight is None:
-                    fight = self.fight_tracker.update(
-                        detection, now, self.rules_config
-                    )
-                if fight is not None:
-                    results.append(fight)
+        elif (
+            frigate_type == "end"
+            and detection.get("label")
+            and self.person_motion_enrichment
+        ):
+            self.motion_enricher.observe_end(detection, now)
 
         return self._emit_results(results, now)
 

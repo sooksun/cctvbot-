@@ -37,9 +37,13 @@ DEFAULT_SCHEDULE = {
 
 DEFAULT_RULES: dict[str, Any] = {
     "restricted_zones": {},
-    # Rules 7/8/9 need enrichment fields Frigate MQTT does not emit by default;
-    # keep false until an enrichment layer supplies them.
+    # Rule 8 littering/object metrics need enrichment Frigate MQTT lacks.
     "enrichment_available": False,
+    # Rules 7 + 9 person-motion enrichment (computed in-worker).
+    "person_motion_enrichment": True,
+    "speed_ema_alpha": 0.5,
+    "nearby_window_seconds": 3.0,
+    "motion_track_ttl_seconds": 60.0,
     "offline_threshold_seconds": 30,
     "luminance_threshold": 10.0,
     "luminance_streak": 3,
