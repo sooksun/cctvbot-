@@ -1,0 +1,36 @@
+# Copy to cameras.yml (gitignored) and adjust per school.
+# camera_id values must match Frigate camera names in frigate/config.yml.
+
+cameras:
+  - camera_id: gate_front
+    name: ประตูหน้า
+    stream_type: ip
+    zone: gate
+    rtsp_example: rtsp://user:pass@192.168.1.21:554/stream1
+    restricted_zones: [restricted]
+    notes: Direct IP camera RTSP
+
+  - camera_id: yard_1
+    name: สนาม
+    stream_type: ip
+    zone: yard
+    rtsp_example: rtsp://user:pass@192.168.1.22:554/stream1
+    restricted_zones: [restricted]
+    notes: Direct IP camera RTSP
+
+  - camera_id: building_a
+    name: อาคาร A
+    stream_type: dvr
+    zone: building
+    # Hikvision-style channel path; other DVRs differ (see README RTSP section)
+    rtsp_example: rtsp://user:pass@192.168.1.50:554/Streaming/Channels/101
+    restricted_zones: [restricted]
+    notes: Analog camera via DVR channel 1 main stream
+
+  - camera_id: hall_1
+    name: โถงหลัก
+    stream_type: ip
+    zone: hall
+    rtsp_example: rtsp://user:pass@192.168.1.23:554/stream1
+    restricted_zones: [restricted]
+    notes: Optional 4th pilot camera; disabled in Frigate by default

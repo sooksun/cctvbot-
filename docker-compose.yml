@@ -1,0 +1,120 @@
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+    networks: [cctvbot]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ./apps/api
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      EVIDENCE_ROOT: /data/events
+    volumes:
+      - ./data/events:/data/events
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [cctvbot]
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ["1883:1883"]
+    # allow anonymous LAN clients (Frigate + event-worker)
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "echo 'listener 1883\nallow_anonymous true\n' > /tmp/mosquitto.conf && mosquitto -c /tmp/mosquitto.conf",
+      ]
+    networks: [cctvbot]
+
+  event-worker:
+    build: ./apps/event-worker
+    env_file: .env
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-http://api:8000}
+      SYSTEM_API_TOKEN: ${SYSTEM_API_TOKEN}
+      EVIDENCE_ROOT: /data/events
+      CONFIG_DIR: /config
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      FRIGATE_BASE_URL: ${FRIGATE_BASE_URL:-http://frigate:5000}
+    volumes:
+      - ./data/events:/data/events
+      - ./data/config:/config
+    depends_on: [api, mosquitto]
+    networks: [cctvbot]
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on: [api]
+    networks: [cctvbot]
+
+
+  # Frigate: RTSP ingest + detect + record. MQTT → mosquitto → event-worker.
+  # School GPU (NVIDIA): use image stable-tensorrt + uncomment deploy/gpus below.
+  # Windows/Laragon CPU-only: image stable, comment hwaccel in frigate/config.yml,
+  #   and use detectors.cpu (see config comments).
+  frigate:
+    container_name: cctvbot-frigate
+    image: ghcr.io/blakeblackshear/frigate:stable
+    # For NVIDIA school box:
+    # image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
+    restart: unless-stopped
+    stop_grace_period: 30s
+    shm_size: "256mb" # ~4 cameras @ 720p detect; raise if Bus error
+    env_file: .env
+    environment:
+      FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD:-}
+      TZ: Asia/Bangkok
+    volumes:
+      - ./frigate:/config
+      - ./data/frigate:/media/frigate
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    # Port 5000 is unauthenticated — LAN admin only; do not public port-forward.
+    ports:
+      - "5000:5000"
+    depends_on: [mosquitto]
+    networks: [cctvbot]
+    # Uncomment on NVIDIA host with nvidia-container-toolkit:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    # runtime: nvidia
+
+networks:
+  cctvbot:
+    driver: bridge
+
+volumes:
+  mysql_data:

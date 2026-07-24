@@ -1,0 +1,141 @@
+# Frigate pilot template — 2–4 school cameras
+# Replace RTSP user/pass/host per school. Frigate expands {FRIGATE_*} from env.
+#
+# Default: CPU-safe for Windows / Laragon / no GPU (dev boots without NVIDIA).
+# GPU box (school, NVIDIA e.g. RTX 5070 Ti):
+#   image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
+#   Uncomment ffmpeg.hwaccel_args below
+#   Switch detectors: comment cpu, uncomment onnx
+
+mqtt:
+  host: mosquitto
+  port: 1883
+  topic_prefix: frigate
+  client_id: frigate
+
+# GPU (RTX 5070 Ti / NVIDIA): uncomment hwaccel for decode offload.
+# ffmpeg:
+#   hwaccel_args: preset-nvidia-h264
+
+# Default: CPU detector for Laragon/dev. GPU school box: onnx + tensorrt image.
+detectors:
+  cpu:
+    type: cpu
+    num_threads: 2
+  # onnx:
+  #   type: onnx
+
+# COCO person + littering proxies used by event-worker Rule 8
+objects:
+  track:
+    - person
+    - bottle
+    - cup
+    - backpack
+    - handbag
+    - umbrella
+  filters:
+    person:
+      min_score: 0.5
+      threshold: 0.7
+
+# Frigate 0.14+ record schema (no record.events / legacy retain)
+record:
+  enabled: true
+  continuous:
+    days: 0
+  motion:
+    days: 30
+  alerts:
+    retain:
+      days: 30
+      mode: active_objects
+  detections:
+    retain:
+      days: 30
+      mode: active_objects
+
+snapshots:
+  enabled: true
+  retain:
+    default: 30
+
+cameras:
+  gate_front:
+    enabled: true
+    ffmpeg:
+      inputs:
+        # IP camera direct RTSP — replace host/user/pass or set FRIGATE_RTSP_PASSWORD
+        - path: rtsp://user:{FRIGATE_RTSP_PASSWORD}@192.168.1.21:554/stream1
+          roles: [detect, record]
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    zones:
+      restricted:
+        # Placeholder polygon (normalized 0–1). Redraw in Frigate UI per site.
+        coordinates: 0.1,0.1,0.9,0.1,0.9,0.9,0.1,0.9
+      litter_watch:
+        coordinates: 0.2,0.4,0.8,0.4,0.8,0.95,0.2,0.95
+    record:
+      enabled: true
+
+  yard_1:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://user:{FRIGATE_RTSP_PASSWORD}@192.168.1.22:554/stream1
+          roles: [detect, record]
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    zones:
+      restricted:
+        coordinates: 0.1,0.1,0.9,0.1,0.9,0.9,0.1,0.9
+      litter_watch:
+        coordinates: 0.2,0.4,0.8,0.4,0.8,0.95,0.2,0.95
+    record:
+      enabled: true
+
+  building_a:
+    enabled: true
+    ffmpeg:
+      inputs:
+        # Analog camera via DVR channel RTSP (vendor path varies — see README)
+        - path: rtsp://user:{FRIGATE_RTSP_PASSWORD}@192.168.1.50:554/Streaming/Channels/101
+          roles: [detect, record]
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    zones:
+      restricted:
+        coordinates: 0.1,0.1,0.9,0.1,0.9,0.9,0.1,0.9
+      litter_watch:
+        coordinates: 0.2,0.4,0.8,0.4,0.8,0.95,0.2,0.95
+    record:
+      enabled: true
+
+  hall_1:
+    enabled: false  # enable when pilot expands to 4th camera
+    ffmpeg:
+      inputs:
+        - path: rtsp://user:{FRIGATE_RTSP_PASSWORD}@192.168.1.23:554/stream1
+          roles: [detect, record]
+    detect:
+      enabled: true
+      width: 1280
+      height: 720
+      fps: 5
+    zones:
+      restricted:
+        coordinates: 0.1,0.1,0.9,0.1,0.9,0.9,0.1,0.9
+      litter_watch:
+        coordinates: 0.2,0.4,0.8,0.4,0.8,0.95,0.2,0.95
+    record:
+      enabled: true
