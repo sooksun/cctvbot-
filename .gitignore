@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 data/events/*
 !data/events/.gitkeep
 data/frigate/*

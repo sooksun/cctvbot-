@@ -1,0 +1,126 @@
+# Production stack for cctvbot — CasaOS host (payaprai-MS-7E41) behind Nginx Proxy Manager.
+#
+# Differences vs docker-compose.yml (dev):
+#   - NO bundled db: uses the host's external MariaDB via host.docker.internal:3306
+#     (bundling MySQL would collide with the host MariaDB on :3306).
+#   - ENVIRONMENT=production => API fail-fasts if any secret is still a default.
+#   - Host ports use the 99xx convention (WEB_PORT/API_PORT), fronted by NPM.
+#   - restart: unless-stopped on every long-running service.
+#
+# Deploy (from /DATA/AppData/www/cctvbot on the server):
+#   cp .env.production.example .env.production      # then edit REAL secrets
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# NPM (cctvbot.cnppai.com): Forward -> HOST_IP:${WEB_PORT} ; custom location /api/ -> HOST_IP:${API_PORT}
+# Frigate :5000 is LAN-only — do NOT add to NPM or public-forward.
+
+services:
+  api:
+    build: ./apps/api
+    env_file: .env.production
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: ${DATABASE_URL}
+      API_SECRET_KEY: ${API_SECRET_KEY}
+      SYSTEM_API_TOKEN: ${SYSTEM_API_TOKEN}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      EVIDENCE_ROOT: /data/events
+      LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN:-}
+      LINE_USER_ID: ${LINE_USER_ID:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach host MariaDB
+    volumes:
+      - ./data/events:/data/events
+    ports:
+      - "${API_PORT:-9931}:8000"              # host LAN only; NPM /api/ -> here
+    restart: unless-stopped
+    networks: [cctvbot]
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        # Baked at build time. Same-origin via NPM: the public domain, NOT localhost.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    ports:
+      - "${WEB_PORT:-9930}:3000"              # host LAN only; NPM root -> here
+    depends_on: [api]
+    restart: unless-stopped
+    networks: [cctvbot]
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    # anonymous LAN broker for Frigate + event-worker (internal network only)
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "echo 'listener 1883\nallow_anonymous true\n' > /tmp/mosquitto.conf && mosquitto -c /tmp/mosquitto.conf",
+      ]
+    restart: unless-stopped
+    networks: [cctvbot]
+
+  event-worker:
+    build: ./apps/event-worker
+    env_file: .env.production
+    environment:
+      API_BASE_URL: http://api:8000
+      SYSTEM_API_TOKEN: ${SYSTEM_API_TOKEN}
+      EVIDENCE_ROOT: /data/events
+      CONFIG_DIR: /config
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      FRIGATE_BASE_URL: http://frigate:5000
+    volumes:
+      - ./data/events:/data/events
+      - ./data/config:/config
+    depends_on: [api, mosquitto]
+    restart: unless-stopped
+    networks: [cctvbot]
+
+  # Frigate: RTSP ingest + detect + record. MQTT -> mosquitto -> event-worker.
+  # GPU host (NVIDIA): keep image stable-tensorrt + deploy/runtime below and
+  #   set ffmpeg.hwaccel + detectors.onnx in frigate/config.yml.
+  # NO GPU (CPU-only): switch image to :stable, COMMENT the deploy/runtime block,
+  #   and use detectors.cpu — WARNING: CPU detect is slow, not recommended for
+  #   more than a smoke test. See DEPLOY.md "Frigate & GPU".
+  frigate:
+    container_name: cctvbot-frigate
+    image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
+    restart: unless-stopped
+    stop_grace_period: 30s
+    shm_size: "256mb"                          # ~4 cams @ 720p; raise if "Bus error"
+    env_file: .env.production
+    environment:
+      FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD:-}
+      TZ: Asia/Bangkok
+    volumes:
+      - ./frigate:/config
+      - ./data/frigate:/media/frigate
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    ports:
+      - "5000:5000"                            # Frigate UI — LAN admin ONLY
+      - "8554:8554"                            # go2rtc RTSP restream — LAN
+    depends_on: [mosquitto]
+    networks: [cctvbot]
+    # --- NVIDIA GPU only: comment this whole block on a CPU-only host ---
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    runtime: nvidia
+    # --- end GPU block ---
+
+networks:
+  cctvbot:
+    driver: bridge
