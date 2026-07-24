@@ -314,9 +314,12 @@ class EventPipeline:
             if fall is not None:
                 results.append(fall)
 
+            # Person registry feeds rules 7/9 and littering's person correlation.
+            if self.person_motion_enrichment or self.enrichment_available:
+                self.motion_enricher.enrich(detection, now)
+
             # Rules 7 + 9 — fed by person-motion enrichment.
             if self.person_motion_enrichment:
-                self.motion_enricher.enrich(detection, now)
                 motion = evaluate_abnormal_motion(detection, now, self.rules_config)
                 if motion is not None:
                     results.append(motion)
@@ -331,8 +334,11 @@ class EventPipeline:
                 if fight is not None:
                     results.append(fight)
 
-            # Rule 8 — littering (object-drop enrichment; still gated separately).
+            # Rule 8 — littering (object-drop). Inject camera-level person presence.
             if self.enrichment_available:
+                detection["person_present"] = self.motion_enricher.person_present(
+                    detection.get("camera_id"), now
+                )
                 litter = evaluate_possible_littering(detection, now, self.rules_config)
                 if litter is None:
                     litter = self.littering_tracker.update(
@@ -344,7 +350,7 @@ class EventPipeline:
         elif (
             frigate_type == "end"
             and detection.get("label")
-            and self.person_motion_enrichment
+            and (self.person_motion_enrichment or self.enrichment_available)
         ):
             self.motion_enricher.observe_end(detection, now)
 

@@ -38,8 +38,8 @@ fight_person_min: 2
 fight_motion_seconds: 3.0
 fight_speed_threshold: 0.12
 
-# Enrichment gate — Rule 8 littering (possible_littering) still needs object-drop
-# metrics (proxy-object centroid drop into litter_watch) that Frigate MQTT does not
-# emit. Keep false until the object-drop enrichment layer is built. Rules 7 + 9 no
-# longer depend on this flag — see person_motion_enrichment above.
+# Rule 8 littering gate (opt-in). Object-drop layer is wired: LitteringTracker
+# detects a proxy object dropping into litter_watch and the worker injects
+# camera-level person presence. Highest false-positive rule — enable PER SITE only
+# after redrawing litter_watch and checking rules-7/9 FP. Rules 7 + 9 do not use it.
 enrichment_available: false
