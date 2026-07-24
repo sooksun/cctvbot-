@@ -13,7 +13,13 @@ def _engine_kwargs(url: str) -> dict:
             "connect_args": {"check_same_thread": False},
             "poolclass": StaticPool,
         }
-    return {}
+    # MySQL/MariaDB: validate pooled connections and recycle them well before
+    # the server's wait_timeout so a long-idle worker/API does not hand out a
+    # dead socket ("MySQL server has gone away") on the first request after idle.
+    return {
+        "pool_pre_ping": True,
+        "pool_recycle": 1800,
+    }
 
 
 engine = create_engine(settings.database_url, **_engine_kwargs(settings.database_url))

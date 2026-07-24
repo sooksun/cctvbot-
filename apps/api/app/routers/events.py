@@ -142,6 +142,17 @@ def create_event(
         raise
     evidence_dump["relative_path"] = rel
 
+    # thumb/clip must be bare filenames (no separators / .. escapes). They are
+    # later joined onto the evidence dir and echoed as server paths by
+    # GET .../evidence; reject traversal at the trusted-worker boundary.
+    for _key in ("thumb", "clip"):
+        _val = evidence_dump.get(_key)
+        if _val is not None and Path(_val).name != _val:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid evidence {_key} filename",
+            )
+
     event = Event(
         event_id=body.event_id,
         camera_id=body.camera.camera_id,

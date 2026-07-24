@@ -169,6 +169,28 @@ def test_create_rejects_path_traversal_relative_path(client: TestClient):
     assert r.status_code == 400
 
 
+def test_create_rejects_traversal_thumb_name(client: TestClient):
+    payload = _minimal_event_payload("EVT-THUMB-0001")
+    payload["evidence"]["thumb"] = "../../etc/passwd"
+    r = client.post(
+        "/api/events",
+        json=payload,
+        headers={"X-System-Token": "test-system-token"},
+    )
+    assert r.status_code == 400
+
+
+def test_create_rejects_traversal_clip_name(client: TestClient):
+    payload = _minimal_event_payload("EVT-CLIP-0001")
+    payload["evidence"]["clip"] = "sub/dir/clip.mp4"
+    r = client.post(
+        "/api/events",
+        json=payload,
+        headers={"X-System-Token": "test-system-token"},
+    )
+    assert r.status_code == 400
+
+
 def test_evidence_rejects_path_traversal_on_get(
     client: TestClient, admin_headers: dict, sample_event: str, monkeypatch
 ):
