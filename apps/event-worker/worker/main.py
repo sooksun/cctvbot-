@@ -37,6 +37,9 @@ DEFAULT_SCHEDULE = {
 
 DEFAULT_RULES: dict[str, Any] = {
     "restricted_zones": {},
+    # Rules 7/8/9 need enrichment fields Frigate MQTT does not emit by default;
+    # keep false until an enrichment layer supplies them.
+    "enrichment_available": False,
     "offline_threshold_seconds": 30,
     "luminance_threshold": 10.0,
     "luminance_streak": 3,

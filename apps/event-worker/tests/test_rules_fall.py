@@ -131,3 +131,16 @@ def test_tracker_resets_on_large_move():
         )
         is None
     )
+
+
+def test_tracker_evicts_stale_tracks():
+    tracker = FallTracker(still_seconds=15.0, ttl_seconds=60.0)
+    tracker.update(_det(track_id="A", box=HORIZONTAL_BOX, current_at=T0), T0)
+    assert "cam-yard:A" in tracker._state
+    # a new track seen 120s later (> ttl) evicts the stale one
+    tracker.update(
+        _det(track_id="B", box=HORIZONTAL_BOX, current_at=T0 + timedelta(seconds=120)),
+        T0 + timedelta(seconds=120),
+    )
+    assert "cam-yard:A" not in tracker._state
+    assert "cam-yard:B" in tracker._state

@@ -31,3 +31,9 @@ litter_max_seconds: 8.0
 fight_person_min: 2
 fight_motion_seconds: 3.0
 fight_speed_threshold: 0.12
+
+# Enrichment gate — Rules 7/8/9 (abnormal_motion/crowd, littering, fight) need
+# speed / nearby_person_count / multi-object / drop metrics that Frigate MQTT
+# does NOT emit by default. Keep false until an enrichment layer feeds those
+# fields; otherwise these rules can never fire in production.
+enrichment_available: false

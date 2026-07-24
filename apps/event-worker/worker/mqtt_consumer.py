@@ -233,6 +233,18 @@ class EventPipeline:
             speed_threshold=float(rules_config.get("fight_speed_threshold", 0.12)),
         )
         self._now_fn = now_fn
+        # Rules 7/8/9 depend on enrichment (speed, nearby_person_count,
+        # multi-object, drop metrics) that Frigate MQTT does not emit by
+        # default. Gated off until an enrichment layer supplies those fields.
+        self.enrichment_available = bool(
+            rules_config.get("enrichment_available", False)
+        )
+        if not self.enrichment_available:
+            logger.info(
+                "enrichment_available=false — abnormal_motion/abnormal_crowd/"
+                "possible_littering/possible_fight are gated off until an "
+                "enrichment layer feeds speed/nearby_person_count/multi-object."
+            )
 
     def _now(self) -> datetime:
         if self._now_fn is not None:
@@ -286,31 +298,34 @@ class EventPipeline:
             if fall is not None:
                 results.append(fall)
 
-            # Rule 7 — motion + crowd
-            motion = evaluate_abnormal_motion(detection, now, self.rules_config)
-            if motion is not None:
-                results.append(motion)
-            crowd = evaluate_abnormal_crowd(detection, now, self.rules_config)
-            if crowd is not None:
-                results.append(crowd)
+            # Rules 7/8/9 require enrichment fields that Frigate MQTT does not
+            # emit by default; only evaluate when an enrichment layer is present.
+            if self.enrichment_available:
+                # Rule 7 — motion + crowd
+                motion = evaluate_abnormal_motion(detection, now, self.rules_config)
+                if motion is not None:
+                    results.append(motion)
+                crowd = evaluate_abnormal_crowd(detection, now, self.rules_config)
+                if crowd is not None:
+                    results.append(crowd)
 
-            # Rule 8 — littering (proxy objects; None if person-only model)
-            litter = evaluate_possible_littering(detection, now, self.rules_config)
-            if litter is None:
-                litter = self.littering_tracker.update(
-                    detection, now, self.rules_config
-                )
-            if litter is not None:
-                results.append(litter)
+                # Rule 8 — littering (proxy objects; None if person-only model)
+                litter = evaluate_possible_littering(detection, now, self.rules_config)
+                if litter is None:
+                    litter = self.littering_tracker.update(
+                        detection, now, self.rules_config
+                    )
+                if litter is not None:
+                    results.append(litter)
 
-            # Rule 9 — fight
-            fight = evaluate_possible_fight(detection, now, self.rules_config)
-            if fight is None:
-                fight = self.fight_tracker.update(
-                    detection, now, self.rules_config
-                )
-            if fight is not None:
-                results.append(fight)
+                # Rule 9 — fight
+                fight = evaluate_possible_fight(detection, now, self.rules_config)
+                if fight is None:
+                    fight = self.fight_tracker.update(
+                        detection, now, self.rules_config
+                    )
+                if fight is not None:
+                    results.append(fight)
 
         return self._emit_results(results, now)
 

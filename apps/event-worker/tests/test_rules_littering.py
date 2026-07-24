@@ -158,3 +158,31 @@ def test_tracker_person_only_model_returns_none():
         )
         is None
     )
+
+
+def test_tracker_evicts_stale_object_tracks():
+    tracker = LitteringTracker(ttl_seconds=60.0)
+
+    def _bottle(tid: str, t: datetime) -> dict:
+        return {
+            "camera_id": "cam-gate",
+            "label": "person",
+            "person_present": True,
+            "nearby_person_count": 1,
+            "current_at": t,
+            "objects": [
+                {
+                    "label": "bottle",
+                    "track_id": tid,
+                    "box": [0.45, 0.35, 0.5, 0.42],
+                    "zones": ["litter_watch"],
+                }
+            ],
+        }
+
+    tracker.update(_bottle("b1", T0), T0)
+    assert any("b1" in k for k in tracker._tracks)
+    # a new object seen 120s later (> ttl) evicts the stale track
+    tracker.update(_bottle("b2", T0 + timedelta(seconds=120)), T0 + timedelta(seconds=120))
+    assert not any("b1" in k for k in tracker._tracks)
+    assert any("b2" in k for k in tracker._tracks)

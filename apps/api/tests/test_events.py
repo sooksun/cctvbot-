@@ -233,3 +233,48 @@ def test_evidence_file_rejects_bad_name(
         headers=admin_headers,
     )
     assert r.status_code == 400
+
+
+def test_list_events_pagination(client: TestClient, admin_headers: dict):
+    # Scope by a dedicated camera_id so the assertion is isolated from rows
+    # created by other tests sharing the in-memory DB.
+    cam = "cam_pagination_test"
+    for i in range(3):
+        payload = _minimal_event_payload(f"EVT-PAGE-{i:04d}")
+        payload["camera"]["camera_id"] = cam
+        r = client.post(
+            "/api/events",
+            json=payload,
+            headers={"X-System-Token": "test-system-token"},
+        )
+        assert r.status_code == 201
+
+    page1 = client.get(
+        f"/api/events?camera_id={cam}&limit=2", headers=admin_headers
+    )
+    assert page1.status_code == 200
+    assert len(page1.json()) == 2
+
+    page2 = client.get(
+        f"/api/events?camera_id={cam}&limit=2&offset=2", headers=admin_headers
+    )
+    assert page2.status_code == 200
+    assert len(page2.json()) == 1
+
+    # no overlap between pages
+    ids1 = {e["event_id"] for e in page1.json()}
+    ids2 = {e["event_id"] for e in page2.json()}
+    assert ids1.isdisjoint(ids2)
+
+
+def test_list_events_rejects_invalid_limit(client: TestClient, admin_headers: dict):
+    assert client.get("/api/events?limit=0", headers=admin_headers).status_code == 422
+    assert client.get("/api/events?limit=999", headers=admin_headers).status_code == 422
+    assert client.get("/api/events?offset=-1", headers=admin_headers).status_code == 422
+
+
+def test_events_composite_index_declared():
+    from app.models import Event
+
+    names = {ix.name for ix in Event.__table__.indexes}
+    assert "ix_events_status_created_at" in names

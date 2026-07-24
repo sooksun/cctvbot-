@@ -58,6 +58,8 @@ export interface EventFilters {
   status?: string;
   camera_id?: string;
   event_type?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export function getToken(): string | null {
@@ -163,6 +165,8 @@ export async function listEvents(filters: EventFilters = {}): Promise<Event[]> {
   if (filters.status) params.set("status", filters.status);
   if (filters.camera_id) params.set("camera_id", filters.camera_id);
   if (filters.event_type) params.set("event_type", filters.event_type);
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  if (filters.offset != null) params.set("offset", String(filters.offset));
   const qs = params.toString();
   return request<Event[]>(`/api/events${qs ? `?${qs}` : ""}`);
 }

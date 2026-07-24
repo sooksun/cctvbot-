@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -37,6 +37,11 @@ class Camera(Base):
 
 class Event(Base):
     __tablename__ = "events"
+    # Dashboard lists filter by status and order by created_at desc;
+    # composite index avoids a filesort as the events table grows.
+    __table_args__ = (
+        Index("ix_events_status_created_at", "status", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     event_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)

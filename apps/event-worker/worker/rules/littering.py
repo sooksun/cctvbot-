@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from worker.rules.base import MESSAGE_TH_PREFIX, RuleResult
@@ -16,6 +16,8 @@ DEFAULT_MIN_DROP_SECONDS = 3.0
 DEFAULT_MAX_DROP_SECONDS = 8.0
 # Minimum downward (positive y) centroid travel in norm units.
 DEFAULT_DOWNWARD_DELTA = 0.05
+# Drop per-object track state not seen within this window (bounds memory).
+DEFAULT_TRACK_TTL_SECONDS = 300.0
 
 
 def _proxy_objects(detection: dict[str, Any]) -> list[dict[str, Any]]:
@@ -157,19 +159,34 @@ class LitteringTracker:
         max_seconds: float = DEFAULT_MAX_DROP_SECONDS,
         downward_delta: float = DEFAULT_DOWNWARD_DELTA,
         enabled: bool = True,
+        ttl_seconds: float = DEFAULT_TRACK_TTL_SECONDS,
     ) -> None:
         self.litter_zone = litter_zone
         self.min_seconds = min_seconds
         self.max_seconds = max_seconds
         self.downward_delta = downward_delta
         self.enabled = enabled
-        # object track key -> {start_y, start_t, person_seen}
+        self.ttl_seconds = ttl_seconds
+        # object track key -> {start_y, start_t, person_seen, last_seen}
         self._tracks: dict[str, dict[str, Any]] = {}
         self._emitted: set[str] = set()
 
     def reset(self) -> None:
         self._tracks.clear()
         self._emitted.clear()
+
+    def _evict_stale(self, now: datetime) -> None:
+        """Drop object tracks not seen within ttl_seconds to bound memory."""
+        cutoff = now - timedelta(seconds=self.ttl_seconds)
+        stale = [
+            k
+            for k, st in self._tracks.items()
+            if st.get("last_seen", st["start_t"]) < cutoff
+        ]
+        for k in stale:
+            self._tracks.pop(k, None)
+            self._emitted.discard(k)
+        self._emitted &= set(self._tracks.keys())
 
     def update(
         self,
@@ -184,6 +201,8 @@ class LitteringTracker:
         ts = now or detection.get("current_at") or detection.get("detected_at")
         if not isinstance(ts, datetime):
             return None
+
+        self._evict_stale(ts)
 
         proxies = _proxy_objects(detection)
         if not proxies:
@@ -213,9 +232,11 @@ class LitteringTracker:
                     "start_t": ts,
                     "person_seen": person_here,
                     "label": (proxy.get("label") or "object").lower(),
+                    "last_seen": ts,
                 }
                 continue
 
+            state["last_seen"] = ts
             state["person_seen"] = state["person_seen"] or person_here
             elapsed = (ts - state["start_t"]).total_seconds()
             dy = cy - float(state["start_y"])  # positive = downward in image coords
@@ -227,6 +248,7 @@ class LitteringTracker:
                     "start_t": ts,
                     "person_seen": person_here,
                     "label": state["label"],
+                    "last_seen": ts,
                 }
                 continue
 

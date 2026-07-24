@@ -172,6 +172,8 @@ def list_events(
     status_filter: Optional[str] = Query(None, alias="status"),
     camera_id: Optional[str] = None,
     event_type: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
 ) -> list[EventResponse]:
     del user  # auth only
     q = db.query(Event)
@@ -181,7 +183,9 @@ def list_events(
         q = q.filter(Event.camera_id == camera_id)
     if event_type:
         q = q.filter(Event.event_type == event_type)
-    events = q.order_by(Event.created_at.desc()).all()
+    events = (
+        q.order_by(Event.created_at.desc()).limit(limit).offset(offset).all()
+    )
     return [_event_to_response(e) for e in events]
 
 

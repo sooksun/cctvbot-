@@ -11,6 +11,7 @@ from app.routers import auth_router, cameras, events
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    settings.check_production_safety()
     init_db()
     db = SessionLocal()
     try:

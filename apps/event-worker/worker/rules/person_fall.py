@@ -11,6 +11,8 @@ DEFAULT_ASPECT_THRESHOLD = 1.2
 DEFAULT_STILL_SECONDS = 15.0
 # Max centroid displacement (norm units) to count as "still".
 DEFAULT_MOVE_THRESHOLD = 0.02
+# Drop per-track state not seen within this window (bounds long-run memory).
+DEFAULT_TRACK_TTL_SECONDS = 300.0
 
 
 def box_aspect_ratio(box: list[float] | None) -> float | None:
@@ -104,10 +106,12 @@ class FallTracker:
         still_seconds: float = DEFAULT_STILL_SECONDS,
         aspect_threshold: float = DEFAULT_ASPECT_THRESHOLD,
         move_threshold: float = DEFAULT_MOVE_THRESHOLD,
+        ttl_seconds: float = DEFAULT_TRACK_TTL_SECONDS,
     ) -> None:
         self.still_seconds = still_seconds
         self.aspect_threshold = aspect_threshold
         self.move_threshold = move_threshold
+        self.ttl_seconds = ttl_seconds
         # track key -> state
         self._state: dict[str, dict[str, Any]] = {}
         self._emitted: set[str] = set()
@@ -115,6 +119,20 @@ class FallTracker:
     def reset(self) -> None:
         self._state.clear()
         self._emitted.clear()
+
+    def _evict_stale(self, now: datetime) -> None:
+        """Drop track keys not seen within ttl_seconds to bound memory."""
+        cutoff = now - timedelta(seconds=self.ttl_seconds)
+        stale = [
+            k
+            for k, st in self._state.items()
+            if st.get("last_seen", st["still_since"]) < cutoff
+        ]
+        for k in stale:
+            self._state.pop(k, None)
+            self._emitted.discard(k)
+        # Drop any emitted keys whose state is already gone.
+        self._emitted &= set(self._state.keys())
 
     def update(
         self,
@@ -128,6 +146,8 @@ class FallTracker:
         ts = now or detection.get("current_at") or detection.get("detected_at")
         if not isinstance(ts, datetime):
             return None
+
+        self._evict_stale(ts)
 
         camera_id = str(detection.get("camera_id") or detection.get("camera") or "unknown")
         track_id = detection.get("track_id")
@@ -147,9 +167,11 @@ class FallTracker:
                 "still_since": ts,
                 "last_centroid": centroid,
                 "started_at": detection.get("started_at") or ts,
+                "last_seen": ts,
             }
             return None
 
+        prev["last_seen"] = ts
         last_c = prev["last_centroid"]
         dx = centroid[0] - last_c[0]
         dy = centroid[1] - last_c[1]
