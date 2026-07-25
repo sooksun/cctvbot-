@@ -18,6 +18,7 @@ from app.schemas import (
     EventResponse,
     EvidenceResponse,
     ReviewRequest,
+    StatusChangeRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,13 @@ router = APIRouter(prefix="/api/events", tags=["events"])
 
 # Allowed evidence file basenames for the file-serve endpoint.
 _ALLOWED_EVIDENCE_NAMES = frozenset({"thumb.jpg", "clip.mp4", "event.json"})
+
+# Allowed operational transitions after review (pending_review handled by /review).
+_LIFECYCLE_TRANSITIONS: dict[str, frozenset[str]] = {
+    "confirmed": frozenset({"action_taken", "closed"}),
+    "action_taken": frozenset({"closed"}),
+    "false_positive": frozenset({"closed"}),
+}
 
 
 def _event_to_response(event: Event) -> EventResponse:
@@ -303,6 +311,56 @@ def review_event(
                 )
 
     event.notifications_json = notifications
+    db.commit()
+    db.refresh(event)
+    return _event_to_response(event)
+
+
+@router.patch("/{event_id}/status", response_model=EventResponse)
+def change_event_status(
+    event_id: str,
+    body: StatusChangeRequest,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(require_roles("admin"))],
+) -> EventResponse:
+    event = db.query(Event).filter(Event.event_id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    allowed = _LIFECYCLE_TRANSITIONS.get(event.status, frozenset())
+    if body.status not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot transition from {event.status} to {body.status}",
+        )
+
+    now = datetime.now(timezone.utc)
+    review = dict(event.review_json or {})
+    if body.status == "action_taken":
+        review["action_taken_by"] = user.username
+        review["action_taken_at"] = now.isoformat()
+        if body.note:
+            review["action_taken_note"] = body.note
+        audit_action = "mark_action_taken"
+    else:  # closed
+        review["closed_by"] = user.username
+        review["closed_at"] = now.isoformat()
+        if body.note:
+            review["closed_note"] = body.note
+        audit_action = "close_event"
+
+    event.status = body.status
+    event.review_json = review
+
+    write_audit(
+        db,
+        who=user.username,
+        action=audit_action,
+        event_id=event_id,
+        ip=_client_ip(request),
+        note=body.note,
+    )
     db.commit()
     db.refresh(event)
     return _event_to_response(event)

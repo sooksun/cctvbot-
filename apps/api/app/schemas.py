@@ -42,6 +42,11 @@ class ReviewRequest(BaseModel):
     note: str | None = None
 
 
+class StatusChangeRequest(BaseModel):
+    status: Literal["action_taken", "closed"]
+    note: str | None = None
+
+
 class EventResponse(BaseModel):
     event_id: str
     camera_id: str

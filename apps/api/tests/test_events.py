@@ -300,3 +300,129 @@ def test_events_composite_index_declared():
 
     names = {ix.name for ix in Event.__table__.indexes}
     assert "ix_events_status_created_at" in names
+
+
+def _viewer_headers() -> dict:
+    from app.auth import create_access_token, hash_password
+    from app.db import SessionLocal
+    from app.models import User
+
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.username == "viewer1").first():
+            db.add(User(username="viewer1", password_hash=hash_password("x"), role="viewer"))
+            db.commit()
+    finally:
+        db.close()
+    token = create_access_token({"sub": "viewer1", "role": "viewer"})
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _confirm(client, admin_headers, event_id):
+    r = client.patch(
+        f"/api/events/{event_id}/review",
+        json={"decision": "confirmed"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200
+
+
+def test_status_confirmed_to_action_taken(client, admin_headers, sample_event):
+    _confirm(client, admin_headers, sample_event)
+    r = client.patch(
+        f"/api/events/{sample_event}/status",
+        json={"status": "action_taken", "note": "แจ้งครูเวร"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "action_taken"
+    assert body["review"]["action_taken_by"] == "admin"
+    assert body["review"]["action_taken_note"] == "แจ้งครูเวร"
+    assert body["review"]["decision"] == "confirmed"  # original review preserved
+
+
+def test_status_confirmed_to_closed(client, admin_headers, sample_event):
+    _confirm(client, admin_headers, sample_event)
+    r = client.patch(
+        f"/api/events/{sample_event}/status",
+        json={"status": "closed"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "closed"
+
+
+def test_status_action_taken_to_closed(client, admin_headers, sample_event):
+    _confirm(client, admin_headers, sample_event)
+    client.patch(
+        f"/api/events/{sample_event}/status",
+        json={"status": "action_taken"},
+        headers=admin_headers,
+    )
+    r = client.patch(
+        f"/api/events/{sample_event}/status",
+        json={"status": "closed"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "closed"
+
+
+def test_status_false_positive_to_closed(client, admin_headers, sample_event):
+    client.patch(
+        f"/api/events/{sample_event}/review",
+        json={"decision": "false_positive"},
+        headers=admin_headers,
+    )
+    r = client.patch(
+        f"/api/events/{sample_event}/status",
+        json={"status": "closed"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "closed"
+
+
+def test_status_pending_to_action_taken_rejected(client, admin_headers, sample_event):
+    r = client.patch(
+        f"/api/events/{sample_event}/status",
+        json={"status": "action_taken"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 409
+
+
+def test_status_closed_is_terminal(client, admin_headers, sample_event):
+    _confirm(client, admin_headers, sample_event)
+    client.patch(
+        f"/api/events/{sample_event}/status",
+        json={"status": "closed"},
+        headers=admin_headers,
+    )
+    r = client.patch(
+        f"/api/events/{sample_event}/status",
+        json={"status": "closed"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 409
+
+
+def test_status_invalid_target_422(client, admin_headers, sample_event):
+    _confirm(client, admin_headers, sample_event)
+    r = client.patch(
+        f"/api/events/{sample_event}/status",
+        json={"status": "confirmed"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 422
+
+
+def test_status_viewer_forbidden(client, admin_headers, sample_event):
+    _confirm(client, admin_headers, sample_event)
+    r = client.patch(
+        f"/api/events/{sample_event}/status",
+        json={"status": "action_taken"},
+        headers=_viewer_headers(),
+    )
+    assert r.status_code == 403
