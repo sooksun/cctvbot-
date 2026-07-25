@@ -37,6 +37,12 @@ export interface Event {
     reviewed_at?: string;
     decision?: string;
     note?: string | null;
+    action_taken_by?: string;
+    action_taken_at?: string;
+    action_taken_note?: string;
+    closed_by?: string;
+    closed_at?: string;
+    closed_note?: string;
   } | null;
   notifications: unknown;
   message_th: string | null;
@@ -183,6 +189,17 @@ export async function reviewEvent(
   return request<Event>(`/api/events/${encodeURIComponent(eventId)}/review`, {
     method: "PATCH",
     body: JSON.stringify({ decision, note: note || null }),
+  });
+}
+
+export async function changeEventStatus(
+  eventId: string,
+  status: "action_taken" | "closed",
+  note?: string,
+): Promise<Event> {
+  return request<Event>(`/api/events/${encodeURIComponent(eventId)}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status, note: note || null }),
   });
 }
 

@@ -7,6 +7,7 @@ import AuthGate from "@/components/AuthGate";
 import AppHeader from "@/components/AppHeader";
 import {
   Event,
+  changeEventStatus,
   fetchEvidenceFileBlobUrl,
   getEvent,
   getEvidence,
@@ -105,6 +106,27 @@ function EventDetailContent() {
         decision === "confirmed"
           ? "ยืนยันเหตุแล้ว (ถ้าตั้งค่า LINE จะส่งข้อความแจ้งเตือน)"
           : "บันทึกว่าไม่ใช่เหตุแล้ว",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onStatusChange(status: "action_taken" | "closed") {
+    setSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const updated = await changeEventStatus(
+        eventId,
+        status,
+        note.trim() || undefined,
+      );
+      setEvent(updated);
+      setMessage(
+        status === "action_taken" ? "บันทึกว่าดำเนินการแล้ว" : "ปิดเคสแล้ว",
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
@@ -231,6 +253,18 @@ function EventDetailContent() {
                       หมายเหตุ: {event.review.note}
                     </p>
                   ) : null}
+                  {event.review.action_taken_by ? (
+                    <p className="mt-1 text-slate-600">
+                      ดำเนินการโดย {event.review.action_taken_by} ·{" "}
+                      {formatDateTime(event.review.action_taken_at)}
+                    </p>
+                  ) : null}
+                  {event.review.closed_by ? (
+                    <p className="mt-1 text-slate-600">
+                      ปิดเคสโดย {event.review.closed_by} ·{" "}
+                      {formatDateTime(event.review.closed_at)}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
             </section>
@@ -315,6 +349,47 @@ function EventDetailContent() {
                     </button>
                   </div>
                 </form>
+              </section>
+            ) : null}
+
+            {admin &&
+            ["confirmed", "action_taken", "false_positive"].includes(
+              event.status,
+            ) ? (
+              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 className="text-base font-semibold text-slate-900">
+                  จัดการเคส (แอดมิน)
+                </h2>
+                <label className="mt-3 block text-sm text-slate-600">
+                  หมายเหตุ (ถ้ามี)
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    rows={2}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    placeholder="รายละเอียดการดำเนินการ..."
+                  />
+                </label>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {event.status === "confirmed" ? (
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => void onStatusChange("action_taken")}
+                      className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      ดำเนินการแล้ว
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => void onStatusChange("closed")}
+                    className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    ปิดเคส
+                  </button>
+                </div>
               </section>
             ) : null}
 
