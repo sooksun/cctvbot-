@@ -185,6 +185,8 @@ git pull && $CO up -d --build                        # deploy โค้ดให
 $CO down                                             # stop ทั้ง stack (คง volume/DB)
 ```
 
+> web image ใช้ **Next standalone** (`output: "standalone"` → runner รัน `node server.js`, ไม่ copy node_modules ทั้งก้อน) — image เล็กลง/boot เร็วขึ้น. `NEXT_PUBLIC_API_URL` ยัง bake ตอน build เหมือนเดิม
+
 Backup DB (ตัวอย่าง cron รายวัน):
 ```bash
 docker exec mariadb mariadb-dump -uroot -p'ROOT_PW' cctvbot | gzip > /DATA/backup/cctvbot-$(date +%F).sql.gz
