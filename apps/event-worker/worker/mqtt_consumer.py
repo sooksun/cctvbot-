@@ -31,7 +31,12 @@ FRIGATE_EVENTS_TOPIC = "frigate/events"
 FRIGATE_AVAILABLE_TOPIC = "frigate/available"
 
 
-def normalize_frigate_event(msg: dict[str, Any], tz: ZoneInfo) -> dict[str, Any] | None:
+def normalize_frigate_event(
+    msg: dict[str, Any],
+    tz: ZoneInfo,
+    detect_width: float = 1280,
+    detect_height: float = 720,
+) -> dict[str, Any] | None:
     """
     Normalize Frigate MQTT ``frigate/events`` payload to a flat detection dict.
 
@@ -93,6 +98,8 @@ def normalize_frigate_event(msg: dict[str, Any], tz: ZoneInfo) -> dict[str, Any]
             box = [float(v) for v in box[:4]]
         except (TypeError, ValueError):
             box = None
+        else:
+            box = _normalize_box(box, detect_width, detect_height)
 
     return {
         "camera_id": str(camera) if camera else "unknown",
@@ -139,6 +146,27 @@ def _ts_to_dt(ts: float | int | str, tz: ZoneInfo) -> datetime:
     except (TypeError, ValueError):
         return datetime.now(tz)
     return datetime.fromtimestamp(value, tz=timezone.utc).astimezone(tz)
+
+
+def _normalize_box(
+    box: list | None, detect_width: float, detect_height: float
+) -> list | None:
+    """Frigate MQTT box is pixels [x1,y1,x2,y2] at detect resolution → scale to 0-1.
+
+    Boxes already in 0-1 (max coord <= 1) are returned unchanged, so already-normalized
+    inputs (tests, or a future Frigate) pass through untouched.
+    """
+    if not box or len(box) < 4:
+        return box
+    try:
+        vals = [float(v) for v in box[:4]]
+    except (TypeError, ValueError):
+        return box
+    if max(abs(v) for v in vals) <= 1.0:
+        return vals
+    w = float(detect_width) or 1.0
+    h = float(detect_height) or 1.0
+    return [vals[0] / w, vals[1] / h, vals[2] / w, vals[3] / h]
 
 
 def rule_result_to_event_dict(
@@ -221,6 +249,8 @@ class EventPipeline:
         self.schedule_config = schedule_config
         self.rules_config = rules_config
         self.tz = ZoneInfo(timezone_name)
+        self.detect_width = float(rules_config.get("detect_width", 1280))
+        self.detect_height = float(rules_config.get("detect_height", 720))
         self.offline_tracker = offline_tracker or OfflineTracker()
         self.fall_tracker = fall_tracker or FallTracker(
             still_seconds=float(rules_config.get("fall_still_seconds", 15.0)),
@@ -273,7 +303,9 @@ class EventPipeline:
         Returns list of event_ids created (dual-written).
         """
         now = self._now()
-        detection = normalize_frigate_event(msg, self.tz)
+        detection = normalize_frigate_event(
+            msg, self.tz, self.detect_width, self.detect_height
+        )
         if detection is None:
             return []
 

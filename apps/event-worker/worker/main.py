@@ -44,6 +44,9 @@ DEFAULT_RULES: dict[str, Any] = {
     "speed_ema_alpha": 0.5,
     "nearby_window_seconds": 3.0,
     "motion_track_ttl_seconds": 60.0,
+    # Frigate detect resolution — normalize pixel boxes to 0-1 at ingest.
+    "detect_width": 1280,
+    "detect_height": 720,
     "offline_threshold_seconds": 30,
     "luminance_threshold": 10.0,
     "luminance_streak": 3,

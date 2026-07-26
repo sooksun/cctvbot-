@@ -27,6 +27,11 @@ speed_ema_alpha: 0.5
 nearby_window_seconds: 3.0
 motion_track_ttl_seconds: 60.0
 
+# Frigate detect resolution — worker normalizes pixel boxes to 0-1 at ingest.
+# Set to match frigate/config.yml detect.width/height per camera plant.
+detect_width: 1280
+detect_height: 720
+
 # Rule 8 — possible littering (higher FP risk; review carefully)
 littering_enabled: true
 litter_zone: litter_watch
