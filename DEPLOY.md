@@ -143,7 +143,7 @@ NPM dashboard (`http://<HOST_IP>:81`) → **Add Proxy Host**
 | Custom locations | Custom Nginx Config | `client_max_body_size 25M; proxy_read_timeout 300s;` |
 | SSL | Certificate | Request new (Let's Encrypt) · Force SSL · HTTP/2 ✓ · HSTS **OFF** จนกว่าจะเสถียร 24h |
 
-> Dashboard เรียก `https://cctvbot.cnppai.com/api/...` → NPM route `/api/` → api container (same-origin). **ห้าม** เพิ่ม Frigate :5000 เข้า NPM หรือ public-forward
+> Dashboard เรียก `https://cctvbot.cnppai.com/api/...` → NPM route `/api/` → api container (same-origin). **ห้าม** เพิ่ม Frigate เป็น proxy host แยก หรือ public-forward :5000 ตรงๆ — อนุญาตเฉพาะ custom location `/live/` แบบ path-scoped ตาม §8a เท่านั้น (ยังไม่ expose Frigate ทั้งตัว)
 
 ---
 
@@ -157,11 +157,12 @@ Add another **Custom location** ใน NPM Proxy Host เดิม:
 
 | Tab | Field | Value |
 |---|---|---|
-| Custom locations | location | `/live/` |
-| Custom locations | Forward to | `<HOST_LAN_IP>:5000` (Frigate) |
+| Custom locations | location | `/live/` → Forward to `<HOST_LAN_IP>:5000` (Frigate) |
 | Custom locations | Custom Nginx Config | `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header Host $host; proxy_buffering off;` |
 
-นี่ให้ browser ใช้ WebSocket ผ่าน `/live/mse/api/ws?src=<camera_id>` (same-origin) แบบปกติ — Frigate ตัวเอง stay บน LAN, ไม่ public.
+นี่ให้ browser ใช้ WebSocket ผ่าน `/live/mse/api/ws?src=<camera_id>` (same-origin) แบบปกติ
+
+> เฉพาะ path `/live/` เท่านั้นที่ expose ผ่าน NPM (ดูข้อห้ามใน §8) — Frigate ตัวเอง stay บน LAN, ไม่ public ทั้งตัว.
 
 จากนั้นตั้ง env:
 ```
