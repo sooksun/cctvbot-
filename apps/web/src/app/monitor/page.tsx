@@ -111,6 +111,7 @@ function SnapshotFallback({
       {isExpanded ? (
         <FullscreenView
           cam={cam}
+          liveFailed
           url={url}
           error={error}
           lastUpdated={lastUpdated}
@@ -160,6 +161,8 @@ function MonitorTile({
       {isExpanded ? (
         <FullscreenView
           cam={cam}
+          liveFailed={false}
+          onLiveError={handleLiveError}
           url={null}
           error={false}
           lastUpdated={null}
@@ -172,12 +175,16 @@ function MonitorTile({
 
 function FullscreenView({
   cam,
+  liveFailed,
+  onLiveError,
   url,
   error,
   lastUpdated,
   onClose,
 }: {
   cam: Camera;
+  liveFailed: boolean;
+  onLiveError?: () => void;
   url: string | null;
   error: boolean;
   lastUpdated: number | null;
@@ -207,28 +214,40 @@ function FullscreenView({
       className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-4"
     >
       <div className="mb-2 text-sm text-white">{cam.name} — กด ESC เพื่อปิด</div>
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={url}
-          alt={`ภาพเต็มจอ ${cam.name}`}
-          className={`max-h-[85vh] max-w-full rounded-lg object-contain ${
-            stale ? "opacity-50" : ""
-          }`}
-        />
+      {liveFailed ? (
+        url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={url}
+            alt={`ภาพเต็มจอ ${cam.name}`}
+            className={`max-h-[85vh] max-w-full rounded-lg object-contain ${
+              stale ? "opacity-50" : ""
+            }`}
+          />
+        ) : (
+          <div className="text-slate-300">
+            {error ? "ไม่มีภาพจากกล้อง" : "กำลังโหลด..."}
+          </div>
+        )
       ) : (
-        <div className="text-slate-300">
-          {error ? "ไม่มีภาพจากกล้อง" : "กำลังโหลด..."}
+        <div className="aspect-video max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-lg bg-black">
+          <LiveVideo cameraId={cam.camera_id} onError={onLiveError} />
         </div>
       )}
-      {stale ? (
-        <div className="mt-2">
-          <StaleBadge />
-        </div>
-      ) : null}
-      {updatedLabel ? (
-        <div className="mt-2 text-xs text-slate-300">{updatedLabel}</div>
-      ) : null}
+      {liveFailed ? (
+        <>
+          {stale ? (
+            <div className="mt-2">
+              <StaleBadge />
+            </div>
+          ) : null}
+          {updatedLabel ? (
+            <div className="mt-2 text-xs text-slate-300">{updatedLabel}</div>
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-2 text-xs font-medium text-red-400">🔴 สด</p>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const listCameras = vi.fn();
@@ -185,6 +185,16 @@ describe("MonitorPage", () => {
     );
     // the still-healthy yard_1 tile must remain untouched
     expect(snapshotHookSpy).not.toHaveBeenCalledWith("yard_1", expect.any(Number));
+  });
+
+  it("fullscreen shows live video when the tile is live", async () => {
+    render(<MonitorPage />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /กล้องหน้า/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /กล้องหน้า/ }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    // a LiveVideo (mocked) is present inside the dialog
+    expect(within(dialog).getByTestId("live-gate_front")).toBeInTheDocument();
   });
 
   it("clears the re-poll interval on unmount (no further listCameras calls, no setState-after-unmount)", async () => {
