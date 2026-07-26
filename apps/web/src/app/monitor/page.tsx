@@ -7,10 +7,19 @@ import { Camera, listCameras } from "@/lib/api";
 import { useCameraSnapshot } from "@/hooks/useCameraSnapshot";
 
 const REFRESH_MS = 2000;
+const LIST_REFRESH_MS = 15000;
 
 function formatUpdatedAt(lastUpdated: number | null): string | null {
   if (lastUpdated == null) return null;
   return `อัปเดตเมื่อ ${new Date(lastUpdated).toLocaleTimeString("th-TH")}`;
+}
+
+function StaleBadge() {
+  return (
+    <span className="rounded bg-amber-100 px-1.5 text-xs text-amber-800">
+      ⚠ ภาพไม่อัปเดต
+    </span>
+  );
 }
 
 function StatusBadges({ cam }: { cam: Camera }) {
@@ -48,6 +57,7 @@ function MonitorTile({
   onClose: () => void;
 }) {
   const { url, error, lastUpdated } = useCameraSnapshot(cam.camera_id, REFRESH_MS);
+  const stale = error && !!url;
   const updatedLabel = formatUpdatedAt(lastUpdated);
   return (
     <>
@@ -60,7 +70,11 @@ function MonitorTile({
         <div className="aspect-video overflow-hidden bg-slate-100">
           {url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={url} alt={`ภาพ ${cam.name}`} className="h-full w-full object-cover" />
+            <img
+              src={url}
+              alt={`ภาพ ${cam.name}`}
+              className={`h-full w-full object-cover ${stale ? "opacity-50" : ""}`}
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-slate-400">
               {error ? "ไม่มีภาพจากกล้อง" : "กำลังโหลด..."}
@@ -69,7 +83,8 @@ function MonitorTile({
         </div>
         <div className="space-y-1 p-3">
           <StatusBadges cam={cam} />
-          {updatedLabel ? (
+          {stale ? <StaleBadge /> : null}
+          {!stale && updatedLabel ? (
             <p className="text-xs text-slate-400">{updatedLabel}</p>
           ) : null}
         </div>
@@ -100,6 +115,7 @@ function FullscreenView({
   lastUpdated: number | null;
   onClose: () => void;
 }) {
+  const stale = error && !!url;
   const updatedLabel = formatUpdatedAt(lastUpdated);
 
   useEffect(() => {
@@ -128,14 +144,21 @@ function FullscreenView({
         <img
           src={url}
           alt={`ภาพเต็มจอ ${cam.name}`}
-          className="max-h-[85vh] max-w-full rounded-lg object-contain"
+          className={`max-h-[85vh] max-w-full rounded-lg object-contain ${
+            stale ? "opacity-50" : ""
+          }`}
         />
       ) : (
         <div className="text-slate-300">
           {error ? "ไม่มีภาพจากกล้อง" : "กำลังโหลด..."}
         </div>
       )}
-      {updatedLabel ? (
+      {stale ? (
+        <div className="mt-2">
+          <StaleBadge />
+        </div>
+      ) : null}
+      {!stale && updatedLabel ? (
         <div className="mt-2 text-xs text-slate-300">{updatedLabel}</div>
       ) : null}
     </div>
@@ -163,6 +186,17 @@ function MonitorContent() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      listCameras()
+        .then((next) => setCameras(next))
+        .catch(() => {
+          // transient re-poll error: keep showing the last known list
+        });
+    }, LIST_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50">

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const listCameras = vi.fn();
 vi.mock("@/lib/api", () => ({
@@ -58,6 +58,10 @@ describe("MonitorPage", () => {
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders a tile per camera including offline/disabled", async () => {
     render(<MonitorPage />);
     await waitFor(() => expect(screen.getByText("กล้องหน้า")).toBeInTheDocument());
@@ -86,5 +90,44 @@ describe("MonitorPage", () => {
     render(<MonitorPage />);
     await waitFor(() => expect(screen.getByText("กล้องหน้า")).toBeInTheDocument());
     expect(screen.getAllByText(/อัปเดตเมื่อ/).length).toBeGreaterThan(0);
+  });
+
+  it("marks a stale frame when error is true but a previous url still exists", async () => {
+    snapshotMock = () => ({
+      url: "blob:x",
+      error: true,
+      refresh: vi.fn(),
+      lastUpdated: null,
+    });
+    render(<MonitorPage />);
+    await waitFor(() => expect(screen.getByText("กล้องหน้า")).toBeInTheDocument());
+    expect(screen.getAllByText(/ภาพไม่อัปเดต/).length).toBeGreaterThan(0);
+  });
+
+  it("re-polls the camera list after LIST_REFRESH_MS and survives a transient re-poll error", async () => {
+    vi.useFakeTimers();
+    listCameras.mockReset();
+    listCameras.mockResolvedValueOnce(CAMS);
+
+    render(<MonitorPage />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(listCameras).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("กล้องหน้า")).toBeInTheDocument();
+
+    listCameras.mockRejectedValueOnce(new Error("transient"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15000);
+    });
+    expect(listCameras).toHaveBeenCalledTimes(2);
+    // transient re-poll error must not blank the grid
+    expect(screen.getByText("กล้องหน้า")).toBeInTheDocument();
+
+    listCameras.mockResolvedValueOnce(CAMS);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15000);
+    });
+    expect(listCameras).toHaveBeenCalledTimes(3);
   });
 });
