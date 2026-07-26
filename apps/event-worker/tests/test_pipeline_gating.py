@@ -113,3 +113,14 @@ def test_littering_stays_gated_by_enrichment_available(tmp_path):
     p = _pipeline(tmp_path, True, posted, clock)
     p.handle_frigate_event(_person_msg("p1", [0.1, 0.2, 0.2, 0.5]))
     assert "possible_littering" not in posted
+
+
+def test_pixel_box_slow_motion_no_false_fire(tmp_path):
+    # Real Frigate sends PIXEL boxes; a person moving ~50px/s on a 1280-wide frame
+    # is ~0.04 norm/s — below run_speed_threshold (0.15) → no abnormal_motion.
+    posted, clock = [], {"t": T0}
+    p = _pipeline(tmp_path, True, posted, clock)
+    p.handle_frigate_event(_person_msg("p1", [600, 300, 700, 500]))
+    clock["t"] = T0 + timedelta(seconds=1)
+    p.handle_frigate_event(_person_msg("p1", [650, 300, 750, 500]))  # +50px in 1s
+    assert "abnormal_motion" not in posted

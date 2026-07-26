@@ -91,7 +91,7 @@ nano frigate/config.yml       # ใส่ RTSP host/path จริงของ�
 - redraw zones `restricted` / `litter_watch` ใน Frigate UI ให้ตรงพื้นที่จริง
 - **Rules 7 + 9 (motion/crowd/fight) เปิดแล้ว** ผ่าน in-worker person-motion enrichment (`person_motion_enrichment: true`). จูน `run_speed_threshold` / `crowd_threshold` / `fight_*` ตามหน้างานเพื่อลด false positive
 - **Rule 8 littering พร้อมแล้ว แต่ opt-in** (`enrichment_available: false` เป็น default) — object-drop layer wired แล้ว (LitteringTracker + camera-level person presence); เปิดต่อกล้องเมื่อพร้อม (FP สูงสุด)
-- ⚠️ ก่อน production: ตรวจว่า Frigate MQTT `box` เป็น normalized `[x1,y1,x2,y2]` ตามที่ enricher สมมติ (capture payload จริงมาดู) — ถ้าเป็น pixel ต้อง normalize ด้วย detect width/height
+- Frigate MQTT `box` เป็น **pixel** — worker normalize → 0-1 ที่ ingest ด้วย `detect_width`/`detect_height` (default 1280×720 ใน `data/config/rules.yml`; ตั้งให้ตรง `frigate/config.yml`). ⚠️ ยังต้องยืนยัน **ลำดับ** box `[x1,y1,x2,y2]` กับ payload Frigate สดตอน pilot
 
 ---
 
