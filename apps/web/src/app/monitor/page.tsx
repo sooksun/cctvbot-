@@ -5,6 +5,7 @@ import AppHeader from "@/components/AppHeader";
 import AuthGate from "@/components/AuthGate";
 import { Camera, listCameras } from "@/lib/api";
 import { useCameraSnapshot } from "@/hooks/useCameraSnapshot";
+import LiveVideo from "@/components/LiveVideo";
 
 const REFRESH_MS = 2000;
 const LIST_REFRESH_MS = 15000;
@@ -57,6 +58,8 @@ function MonitorTile({
   onClose: () => void;
 }) {
   const { url, error, lastUpdated } = useCameraSnapshot(cam.camera_id, REFRESH_MS);
+  const [liveFailed, setLiveFailed] = useState(false);
+  const handleLiveError = useCallback(() => setLiveFailed(true), []);
   const stale = error && !!url;
   const updatedLabel = formatUpdatedAt(lastUpdated);
   return (
@@ -68,7 +71,9 @@ function MonitorTile({
         className="overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm hover:border-slate-300"
       >
         <div className="aspect-video overflow-hidden bg-slate-100">
-          {url ? (
+          {!liveFailed ? (
+            <LiveVideo cameraId={cam.camera_id} onError={handleLiveError} />
+          ) : url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={url}
@@ -83,10 +88,16 @@ function MonitorTile({
         </div>
         <div className="space-y-1 p-3">
           <StatusBadges cam={cam} />
-          {stale ? <StaleBadge /> : null}
-          {updatedLabel ? (
-            <p className="text-xs text-slate-400">{updatedLabel}</p>
-          ) : null}
+          {!liveFailed ? (
+            <p className="text-xs font-medium text-red-600">🔴 สด</p>
+          ) : (
+            <>
+              {stale ? <StaleBadge /> : null}
+              {updatedLabel ? (
+                <p className="text-xs text-slate-400">{updatedLabel}</p>
+              ) : null}
+            </>
+          )}
         </div>
       </button>
       {isExpanded ? (
