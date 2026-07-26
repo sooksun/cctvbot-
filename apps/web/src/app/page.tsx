@@ -28,6 +28,10 @@ function DashboardContent() {
   const [filters, setFilters] = useState<EventFilters>({
     status: "pending_review",
   });
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,21 +40,35 @@ function DashboardContent() {
     setError(null);
     try {
       const [ev, cams] = await Promise.all([
-        listEvents(filters),
+        listEvents({ ...filters, limit: pageSize, offset }),
         listCameras(),
       ]);
       setEvents(ev);
       setCameras(cams);
+      setLastUpdated(
+        new Date().toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok" }),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "โหลดข้อมูลไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, pageSize, offset]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const t = setInterval(() => void load(), 15000);
+    return () => clearInterval(t);
+  }, [autoRefresh, load]);
+
+  const patchFilter = (patch: Partial<EventFilters>) => {
+    setOffset(0);
+    setFilters((f) => ({ ...f, ...patch }));
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -106,10 +124,7 @@ function DashboardContent() {
               <select
                 value={filters.status || ""}
                 onChange={(e) =>
-                  setFilters((f) => ({
-                    ...f,
-                    status: e.target.value || undefined,
-                  }))
+                  patchFilter({ status: e.target.value || undefined })
                 }
                 className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-800"
               >
@@ -127,10 +142,7 @@ function DashboardContent() {
               <select
                 value={filters.camera_id || ""}
                 onChange={(e) =>
-                  setFilters((f) => ({
-                    ...f,
-                    camera_id: e.target.value || undefined,
-                  }))
+                  patchFilter({ camera_id: e.target.value || undefined })
                 }
                 className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-800"
               >
@@ -148,10 +160,7 @@ function DashboardContent() {
               <select
                 value={filters.event_type || ""}
                 onChange={(e) =>
-                  setFilters((f) => ({
-                    ...f,
-                    event_type: e.target.value || undefined,
-                  }))
+                  patchFilter({ event_type: e.target.value || undefined })
                 }
                 className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-800"
               >
@@ -164,7 +173,25 @@ function DashboardContent() {
               </select>
             </label>
 
-            <div className="flex items-end">
+            <label className="flex flex-col gap-1 text-xs text-slate-500">
+              ต่อหน้า
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setOffset(0);
+                  setPageSize(Number(e.target.value));
+                }}
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-800"
+              >
+                {[25, 50, 100].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex items-end gap-3">
               <button
                 type="button"
                 onClick={() => void load()}
@@ -172,6 +199,19 @@ function DashboardContent() {
               >
                 รีเฟรช
               </button>
+              <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={autoRefresh}
+                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                />
+                รีเฟรชอัตโนมัติ (15 วิ)
+              </label>
+              {lastUpdated ? (
+                <span className="text-xs text-slate-400">
+                  อัปเดตล่าสุด {lastUpdated}
+                </span>
+              ) : null}
             </div>
           </div>
 
@@ -250,6 +290,35 @@ function DashboardContent() {
               </table>
             </div>
           )}
+
+          {!loading && !error ? (
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm">
+              <span className="text-slate-500">
+                หน้า {Math.floor(offset / pageSize) + 1}
+                {events.length > 0
+                  ? ` · แสดง ${offset + 1}–${offset + events.length}`
+                  : ""}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={offset === 0}
+                  onClick={() => setOffset((o) => Math.max(0, o - pageSize))}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  ก่อนหน้า
+                </button>
+                <button
+                  type="button"
+                  disabled={events.length < pageSize}
+                  onClick={() => setOffset((o) => o + pageSize)}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  ถัดไป
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
       </main>
     </div>
