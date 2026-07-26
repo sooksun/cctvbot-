@@ -84,7 +84,7 @@ function MonitorTile({
         <div className="space-y-1 p-3">
           <StatusBadges cam={cam} />
           {stale ? <StaleBadge /> : null}
-          {!stale && updatedLabel ? (
+          {updatedLabel ? (
             <p className="text-xs text-slate-400">{updatedLabel}</p>
           ) : null}
         </div>
@@ -158,7 +158,7 @@ function FullscreenView({
           <StaleBadge />
         </div>
       ) : null}
-      {!stale && updatedLabel ? (
+      {updatedLabel ? (
         <div className="mt-2 text-xs text-slate-300">{updatedLabel}</div>
       ) : null}
     </div>

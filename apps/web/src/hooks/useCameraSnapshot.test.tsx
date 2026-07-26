@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchSnapshot = vi.fn();
@@ -59,6 +59,21 @@ describe("useCameraSnapshot", () => {
     const { result } = renderHook(() => useCameraSnapshot("cam6", 2000));
     await waitFor(() => expect(result.current.error).toBe(true));
     expect(result.current.lastUpdated).toBeNull();
+  });
+
+  it("keeps the previous lastUpdated unchanged when a later fetch rejects", async () => {
+    const { result } = renderHook(() => useCameraSnapshot("cam7", 2000));
+    await waitFor(() => expect(result.current.url).toBe("blob:fake-url"));
+    expect(typeof result.current.lastUpdated).toBe("number");
+    const capturedValue = result.current.lastUpdated;
+
+    fetchSnapshot.mockRejectedValueOnce(new Error("boom"));
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    await waitFor(() => expect(result.current.error).toBe(true));
+    expect(result.current.lastUpdated).toBe(capturedValue);
   });
 
   it("revokes the object URL on unmount", async () => {

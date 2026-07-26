@@ -104,6 +104,20 @@ describe("MonitorPage", () => {
     expect(screen.getAllByText(/ภาพไม่อัปเดต/).length).toBeGreaterThan(0);
   });
 
+  it("shows both the stale badge and the last-updated time for a stale frame", async () => {
+    const ts = 1700000000000;
+    snapshotMock = () => ({
+      url: "blob:x",
+      error: true,
+      refresh: vi.fn(),
+      lastUpdated: ts,
+    });
+    render(<MonitorPage />);
+    await waitFor(() => expect(screen.getByText("กล้องหน้า")).toBeInTheDocument());
+    expect(screen.getAllByText(/ภาพไม่อัปเดต/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/อัปเดตเมื่อ/).length).toBeGreaterThan(0);
+  });
+
   it("re-polls the camera list after LIST_REFRESH_MS and survives a transient re-poll error", async () => {
     vi.useFakeTimers();
     listCameras.mockReset();
@@ -129,5 +143,24 @@ describe("MonitorPage", () => {
       await vi.advanceTimersByTimeAsync(15000);
     });
     expect(listCameras).toHaveBeenCalledTimes(3);
+  });
+
+  it("clears the re-poll interval on unmount (no further listCameras calls, no setState-after-unmount)", async () => {
+    vi.useFakeTimers();
+    listCameras.mockReset();
+    listCameras.mockResolvedValue(CAMS);
+
+    const { unmount } = render(<MonitorPage />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(listCameras).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15000);
+    });
+    expect(listCameras).toHaveBeenCalledTimes(1);
   });
 });
