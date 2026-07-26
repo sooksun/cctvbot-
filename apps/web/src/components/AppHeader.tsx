@@ -26,6 +26,14 @@ export default function AppHeader() {
           </span>
         </div>
         <div className="flex items-center gap-3 text-sm">
+          {role === "admin" ? (
+            <Link
+              href="/cameras"
+              className="hidden text-slate-600 hover:text-slate-900 sm:inline"
+            >
+              จัดการกล้อง
+            </Link>
+          ) : null}
           <Link
             href="/account"
             className="hidden text-slate-600 hover:text-slate-900 sm:inline"

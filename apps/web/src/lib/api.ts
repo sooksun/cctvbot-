@@ -56,6 +56,7 @@ export interface Camera {
   stream_type: string;
   zone: string | null;
   is_online: boolean;
+  enabled: boolean;
   last_seen_at: string | null;
   created_at: string | null;
 }
@@ -218,6 +219,29 @@ export async function changeEventStatus(
 
 export async function listCameras(): Promise<Camera[]> {
   return request<Camera[]>("/api/cameras");
+}
+
+export async function updateCamera(
+  cameraId: string,
+  patch: { name?: string; zone?: string | null; enabled?: boolean },
+): Promise<Camera> {
+  return request<Camera>(`/api/cameras/${encodeURIComponent(cameraId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Fetch a camera snapshot (admin JWT) as an object URL for <img>. */
+export async function fetchCameraSnapshotUrl(cameraId: string): Promise<string> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(
+    `${API_URL}/api/cameras/${encodeURIComponent(cameraId)}/snapshot`,
+    { headers },
+  );
+  if (!res.ok) throw new ApiError(res.status, "snapshot unavailable");
+  return URL.createObjectURL(await res.blob());
 }
 
 export async function getEvidence(eventId: string) {
