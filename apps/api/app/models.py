@@ -29,6 +29,7 @@ class Camera(Base):
     stream_type: Mapped[str] = mapped_column(String(64), nullable=False, default="rtsp")
     zone: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_online: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

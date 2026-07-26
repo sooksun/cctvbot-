@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from app.audit import write_audit
@@ -133,6 +133,16 @@ def create_event(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Event already exists",
+        )
+
+    # Monitoring disabled for this camera → drop the event (no alert, no row).
+    camera = (
+        db.query(Camera).filter(Camera.camera_id == body.camera.camera_id).first()
+    )
+    if camera is not None and camera.enabled is False:
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content={"detail": "camera monitoring disabled", "event_id": body.event_id},
         )
 
     # camera_offline events mark the camera offline; other events mark online.

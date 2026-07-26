@@ -48,6 +48,10 @@ GRANT ALL PRIVILEGES ON cctvbot.* TO 'cctvbot'@'%';
 FLUSH PRIVILEGES;
 ```
 > ตาราง (users/cameras/events/audit_logs) ถูกสร้างอัตโนมัติตอน API boot ครั้งแรก (`Base.metadata.create_all`) — ไม่ต้อง migrate มือ
+>
+> อัปเกรดจากเวอร์ชันก่อนมี camera enable/disable: รันครั้งเดียวบน DB เดิม —
+> `ALTER TABLE cameras ADD COLUMN enabled TINYINT(1) NOT NULL DEFAULT 1;`
+> (DB สร้างใหม่ไม่ต้องทำ — `create_all` ใส่คอลัมน์ให้แล้ว)
 
 ---
 

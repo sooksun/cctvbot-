@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     api_secret_key: str = "dev-secret-change-me-32chars-min"
     system_api_token: str = "dev-system-token"
     evidence_root: str = "./data/events"
+    frigate_base_url: str = "http://frigate:5000"
     cors_origins: str = "http://localhost:3000"
     admin_username: str = "admin"
     admin_password: str = "admin123!"

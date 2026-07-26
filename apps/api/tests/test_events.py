@@ -426,3 +426,90 @@ def test_status_viewer_forbidden(client, admin_headers, sample_event):
         headers=_viewer_headers(),
     )
     assert r.status_code == 403
+
+
+def test_camera_response_has_enabled(client, admin_headers, sample_event):
+    del sample_event
+    r = client.get("/api/cameras", headers=admin_headers)
+    assert r.status_code == 200
+    assert all("enabled" in c for c in r.json())
+
+
+def test_patch_camera_config_admin(client, admin_headers):
+    # Dedicated camera — never mutate the shared cam_front_gate (in-memory DB persists).
+    p = _minimal_event_payload("EVT-PATCHCAM-0001")
+    p["camera"]["camera_id"] = "cam_patch_test"
+    assert client.post(
+        "/api/events", json=p, headers={"X-System-Token": "test-system-token"}
+    ).status_code == 201
+    r = client.patch(
+        "/api/cameras/cam_patch_test",
+        json={"name": "ประตูหน้าใหม่", "zone": "gate2", "enabled": False},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["name"] == "ประตูหน้าใหม่"
+    assert body["zone"] == "gate2"
+    assert body["enabled"] is False
+
+
+def test_patch_camera_unknown_404(client, admin_headers):
+    r = client.patch("/api/cameras/nope", json={"name": "x"}, headers=admin_headers)
+    assert r.status_code == 404
+
+
+def test_patch_camera_viewer_forbidden(client, sample_event):
+    del sample_event
+    r = client.patch(
+        "/api/cameras/cam_front_gate",
+        json={"name": "x"},
+        headers=_viewer_headers(),
+    )
+    assert r.status_code == 403
+
+
+def test_create_event_dropped_when_camera_disabled(client, admin_headers):
+    p1 = _minimal_event_payload("EVT-DIS-0001")
+    p1["camera"]["camera_id"] = "cam_disable_test"
+    assert client.post(
+        "/api/events", json=p1, headers={"X-System-Token": "test-system-token"}
+    ).status_code == 201
+
+    assert client.patch(
+        "/api/cameras/cam_disable_test",
+        json={"enabled": False},
+        headers=admin_headers,
+    ).status_code == 200
+
+    p2 = _minimal_event_payload("EVT-DIS-0002")
+    p2["camera"]["camera_id"] = "cam_disable_test"
+    r = client.post("/api/events", json=p2, headers={"X-System-Token": "test-system-token"})
+    assert r.status_code == 202
+    got = client.get("/api/events/EVT-DIS-0002", headers=admin_headers)
+    assert got.status_code == 404
+
+
+def test_snapshot_proxies_frigate(client, admin_headers, sample_event, monkeypatch):
+    del sample_event
+    from app.routers import cameras
+
+    monkeypatch.setattr(cameras, "_fetch_frigate_snapshot", lambda cid: b"\xff\xd8\xfffakejpeg")
+    r = client.get("/api/cameras/cam_front_gate/snapshot", headers=admin_headers)
+    assert r.status_code == 200
+    assert "image/jpeg" in r.headers.get("content-type", "")
+    assert r.content == b"\xff\xd8\xfffakejpeg"
+
+
+def test_snapshot_unknown_camera_404(client, admin_headers):
+    r = client.get("/api/cameras/nope/snapshot", headers=admin_headers)
+    assert r.status_code == 404
+
+
+def test_snapshot_frigate_down_502(client, admin_headers, sample_event, monkeypatch):
+    del sample_event
+    from app.routers import cameras
+
+    monkeypatch.setattr(cameras, "_fetch_frigate_snapshot", lambda cid: None)
+    r = client.get("/api/cameras/cam_front_gate/snapshot", headers=admin_headers)
+    assert r.status_code == 502

@@ -86,6 +86,7 @@ class CameraResponse(BaseModel):
     stream_type: str
     zone: str | None = None
     is_online: bool
+    enabled: bool = True
     last_seen_at: datetime | None = None
     created_at: datetime | None = None
 
@@ -97,3 +98,9 @@ class CameraUpsert(BaseModel):
     stream_type: Optional[str] = None
     zone: Optional[str] = None
     is_online: bool = True
+
+
+class CameraConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    zone: Optional[str] = None
+    enabled: Optional[bool] = None
