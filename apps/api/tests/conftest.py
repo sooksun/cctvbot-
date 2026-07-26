@@ -1,6 +1,6 @@
 import os
 
-os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
+os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ["API_SECRET_KEY"] = "test-secret-key-at-least-32-characters"
 os.environ["SYSTEM_API_TOKEN"] = "test-system-token"
 os.environ["ADMIN_USERNAME"] = "admin"
@@ -8,6 +8,20 @@ os.environ["ADMIN_PASSWORD"] = "admin123!"
 
 import pytest
 from fastapi.testclient import TestClient
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_schema():
+    from app.config import settings
+    from app.db import Base, engine
+    import app.models  # noqa: F401  (register tables on Base.metadata)
+
+    is_sqlite = settings.database_url.startswith("sqlite")
+    if not is_sqlite:
+        Base.metadata.create_all(bind=engine)
+    yield
+    if not is_sqlite:
+        Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture(autouse=True)
