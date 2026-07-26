@@ -151,7 +151,13 @@ function MonitorTile({
     <>
       <TileButton cam={cam} onExpand={onExpand}>
         <div className="aspect-video overflow-hidden bg-slate-100">
-          <LiveVideo cameraId={cam.camera_id} onError={handleLiveError} />
+          {isExpanded ? (
+            // Fullscreen overlay owns the single live stream for this camera
+            // while expanded; this placeholder just fills the tile behind it.
+            <div className="h-full w-full bg-black" />
+          ) : (
+            <LiveVideo cameraId={cam.camera_id} onError={handleLiveError} />
+          )}
         </div>
         <div className="space-y-1 p-3">
           <StatusBadges cam={cam} />

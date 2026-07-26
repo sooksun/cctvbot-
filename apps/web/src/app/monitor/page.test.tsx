@@ -197,6 +197,20 @@ describe("MonitorPage", () => {
     expect(within(dialog).getByTestId("live-gate_front")).toBeInTheDocument();
   });
 
+  it("unmounts the grid tile's live stream while expanded so only one live stream exists per camera", async () => {
+    render(<MonitorPage />);
+    await waitFor(() => expect(screen.getByTestId("live-gate_front")).toBeInTheDocument());
+    // before expand: exactly one live stream (the grid tile's)
+    expect(screen.getAllByTestId("live-gate_front")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /กล้องหน้า/ }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByTestId("live-gate_front")).toBeInTheDocument();
+    // after expand: still exactly one live stream total — the grid tile's was
+    // unmounted (replaced by a placeholder) and only the fullscreen one remains
+    expect(screen.getAllByTestId("live-gate_front")).toHaveLength(1);
+  });
+
   it("clears the re-poll interval on unmount (no further listCameras calls, no setState-after-unmount)", async () => {
     vi.useFakeTimers();
     listCameras.mockReset();
