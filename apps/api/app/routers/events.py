@@ -3,14 +3,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from app.audit import write_audit
 from app.auth import require_roles, verify_system_token
 from app.config import settings
-from app.db import get_db
+from app.db import SessionLocal, get_db
 from app.line_notify import build_line_text_for_event, send_line_text
 from app.models import Camera, Event, User
 from app.schemas import (
@@ -116,6 +124,43 @@ def _upsert_camera(db: Session, camera_info, *, is_online: bool = True) -> Camer
         )
         db.add(camera)
     return camera
+
+
+def _dispatch_line_notification(
+    *,
+    event_id: str,
+    text: str,
+    token: str,
+    line_user: str,
+    reviewed_by: str,
+    ip: Optional[str],
+) -> None:
+    """Background: push LINE text; on success flag the event + audit (own session)."""
+    try:
+        send_line_text(token, line_user, text)
+    except Exception:
+        logger.exception("LINE notify failed for %s; review already committed", event_id)
+        return
+    db = SessionLocal()
+    try:
+        event = db.query(Event).filter(Event.event_id == event_id).first()
+        if event is None:
+            return
+        notifications = dict(event.notifications_json or {})
+        notifications["line_sent"] = True
+        notifications["line_sent_at"] = datetime.now(timezone.utc).isoformat()
+        event.notifications_json = notifications
+        write_audit(
+            db,
+            who=reviewed_by,
+            action="send_line",
+            event_id=event_id,
+            ip=ip,
+            note="LINE text push after confirm",
+        )
+        db.commit()
+    finally:
+        db.close()
 
 
 @router.post(
@@ -245,6 +290,7 @@ def review_event(
     event_id: str,
     body: ReviewRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(require_roles("admin"))],
 ) -> EventResponse:
@@ -301,24 +347,17 @@ def review_event(
             )
             camera_name = camera.name if camera else event.camera_id
             text = build_line_text_for_event(event, camera_name)
-            try:
-                send_line_text(token, line_user, text)
-            except Exception:
-                # Review already applied above; keep line_sent=false and commit.
-                logger.exception(
-                    "LINE notify failed for %s; review still committed", event_id
-                )
-            else:
-                notifications["line_sent"] = True
-                notifications["line_sent_at"] = now.isoformat()
-                write_audit(
-                    db,
-                    who=user.username,
-                    action="send_line",
-                    event_id=event_id,
-                    ip=_client_ip(request),
-                    note="LINE text push after confirm",
-                )
+            # Push off-request so the review response returns immediately; the
+            # dispatcher flags line_sent + writes the send_line audit on success.
+            background_tasks.add_task(
+                _dispatch_line_notification,
+                event_id=event_id,
+                text=text,
+                token=token,
+                line_user=line_user,
+                reviewed_by=user.username,
+                ip=_client_ip(request),
+            )
 
     event.notifications_json = notifications
     db.commit()

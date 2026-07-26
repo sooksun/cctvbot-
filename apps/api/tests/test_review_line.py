@@ -70,8 +70,6 @@ def test_review_confirm_sends_line(
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "confirmed"
-    assert body["notifications"]["line_sent"] is True
-    assert body["notifications"]["line_sent_at"] is not None
 
     mock_send.assert_called_once()
     token, user_id, text = mock_send.call_args[0]
@@ -81,6 +79,11 @@ def test_review_confirm_sends_line(
     assert "ประตูหน้า" in text
     assert "บุคคลนอกเวลา" in text
     assert "http" not in text
+
+    # LINE is dispatched in the background; the row is flagged after the push.
+    got = client.get(f"/api/events/{sample_event}", headers=admin_headers).json()
+    assert got["notifications"]["line_sent"] is True
+    assert got["notifications"]["line_sent_at"] is not None
 
 
 def test_review_confirm_skips_line_when_token_empty(
