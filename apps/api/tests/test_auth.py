@@ -54,3 +54,79 @@ def test_login_rate_limited(client: TestClient):
         )
     assert last is not None
     assert last.status_code == 429
+
+
+def _make_login(client, username, password, role="viewer"):
+    from app.auth import hash_password
+    from app.db import SessionLocal
+    from app.models import User
+
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.username == username).first()
+        if u:
+            u.password_hash = hash_password(password)
+        else:
+            db.add(User(username=username, password_hash=hash_password(password), role=role))
+        db.commit()
+    finally:
+        db.close()
+    r = client.post("/api/auth/login", json={"username": username, "password": password})
+    assert r.status_code == 200
+    return r.json()["access_token"]
+
+
+def test_change_password_success(client: TestClient):
+    token = _make_login(client, "pwuser", "oldpass123")
+    h = {"Authorization": f"Bearer {token}"}
+    r = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "oldpass123", "new_password": "newpass456"},
+        headers=h,
+    )
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert client.post(
+        "/api/auth/login", json={"username": "pwuser", "password": "newpass456"}
+    ).status_code == 200
+    assert client.post(
+        "/api/auth/login", json={"username": "pwuser", "password": "oldpass123"}
+    ).status_code == 401
+
+
+def test_change_password_wrong_current(client: TestClient):
+    token = _make_login(client, "pwuser2", "oldpass123")
+    r = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "WRONG", "new_password": "newpass456"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 400
+
+
+def test_change_password_same_as_current(client: TestClient):
+    token = _make_login(client, "pwuser3", "oldpass123")
+    r = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "oldpass123", "new_password": "oldpass123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 400
+
+
+def test_change_password_too_short(client: TestClient):
+    token = _make_login(client, "pwuser4", "oldpass123")
+    r = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "oldpass123", "new_password": "short"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422
+
+
+def test_change_password_unauthenticated(client: TestClient):
+    r = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "x", "new_password": "newpass456"},
+    )
+    assert r.status_code == 401

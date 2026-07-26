@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.audit import write_audit
 from app.auth import (
     create_access_token,
     get_current_user,
+    hash_password,
     verify_password,
     verify_system_token,
 )
@@ -32,6 +34,11 @@ class LoginResponse(BaseModel):
 class MeResponse(BaseModel):
     username: str
     role: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -63,6 +70,34 @@ def login(
 @router.get("/me", response_model=MeResponse)
 def me(user: User = Depends(get_current_user)) -> MeResponse:
     return MeResponse(username=user.username, role=user.role)
+
+
+@router.post("/change-password")
+def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="รหัสผ่านปัจจุบันไม่ถูกต้อง",
+        )
+    if body.new_password == body.current_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="รหัสใหม่ต้องต่างจากรหัสเดิม",
+        )
+    user.password_hash = hash_password(body.new_password)
+    write_audit(
+        db,
+        who=user.username,
+        action="change_password",
+        ip=request.client.host if request.client else None,
+    )
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/system-check")
