@@ -10,6 +10,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+@pytest.fixture(autouse=True)
+def _reset_login_limiter():
+    # login_limiter is module-level; reset so per-test logins don't accumulate
+    # toward the rate limit across the shared in-memory DB session.
+    from app.routers.auth_router import login_limiter
+
+    login_limiter.reset()
+    yield
+
+
 @pytest.fixture
 def client():
     from app.main import app

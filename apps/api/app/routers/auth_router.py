@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -10,8 +10,12 @@ from app.auth import (
 )
 from app.db import get_db
 from app.models import User
+from app.ratelimit import RateLimiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Brute-force guard on login: 10 attempts / 60s per client IP (single process).
+login_limiter = RateLimiter(max_attempts=10, window_seconds=60.0)
 
 
 class LoginRequest(BaseModel):
@@ -31,7 +35,17 @@ class MeResponse(BaseModel):
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+def login(
+    body: LoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> LoginResponse:
+    client_ip = request.client.host if request.client else "unknown"
+    if not login_limiter.allow(f"login:{client_ip}"):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts; please wait and try again.",
+        )
     user = db.query(User).filter(User.username == body.username).first()
     if (
         not user

@@ -43,3 +43,14 @@ def test_system_token_ok(client: TestClient):
 def test_system_token_bad(client: TestClient):
     r = client.get("/api/auth/system-check", headers={"X-System-Token": "nope"})
     assert r.status_code == 401
+
+
+def test_login_rate_limited(client: TestClient):
+    # 10 attempts allowed (wrong password → 401), the 11th is throttled → 429.
+    last = None
+    for _ in range(11):
+        last = client.post(
+            "/api/auth/login", json={"username": "admin", "password": "wrong"}
+        )
+    assert last is not None
+    assert last.status_code == 429
