@@ -147,6 +147,50 @@ NPM dashboard (`http://<HOST_IP>:81`) → **Add Proxy Host**
 
 ---
 
+## 8a) Live video (go2rtc MSE)
+
+Frigate go2rtc ให้ live MSE (Media Source Extensions) streaming — ต้องตั้ง proxy + dev config.
+
+### Production (ผ่าน NPM reverse proxy)
+
+Add another **Custom location** ใน NPM Proxy Host เดิม:
+
+| Tab | Field | Value |
+|---|---|---|
+| Custom locations | location | `/live/` |
+| Custom locations | Forward to | `<HOST_LAN_IP>:5000` (Frigate) |
+| Custom locations | Custom Nginx Config | `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header Host $host; proxy_buffering off;` |
+
+นี่ให้ browser ใช้ WebSocket ผ่าน `/live/mse/api/ws?src=<camera_id>` (same-origin) แบบปกติ — Frigate ตัวเอง stay บน LAN, ไม่ public.
+
+จากนั้นตั้ง env:
+```
+NEXT_PUBLIC_LIVE_WS_BASE=/live/mse/api/ws
+```
+
+### Local development (แบบ standalone go2rtc ไม่มี Frigate)
+
+ตั้งค่า `go2rtc` ที่ `frigate/config.yml` มี `api.origin: "*"` เพื่อ allow cross-origin requests:
+```yaml
+go2rtc:
+  api:
+    origin: "*"
+  streams:
+    gate_front: "ffmpeg:rtsp://..."
+```
+
+แล้ว start go2rtc standalone:
+```bash
+go2rtc -c frigate/config.yml
+```
+
+ตั้ง env สำหรับ local dev:
+```
+NEXT_PUBLIC_LIVE_WS_BASE=ws://localhost:1984/api/ws
+```
+
+---
+
 ## 9) Smoke test (หลัง deploy)
 
 ```bash
