@@ -41,4 +41,7 @@ def get_db() -> Generator[Session, None, None]:
 def init_db() -> None:
     from app import models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+    # sqlite (tests/dev) bootstraps directly; MySQL/prod schema is owned by Alembic
+    # (`alembic upgrade head`, run by the API container before serving).
+    if settings.database_url.startswith("sqlite"):
+        Base.metadata.create_all(bind=engine)

@@ -47,11 +47,17 @@ CREATE USER IF NOT EXISTS 'cctvbot'@'%' IDENTIFIED BY 'STRONG_DB_PASSWORD';
 GRANT ALL PRIVILEGES ON cctvbot.* TO 'cctvbot'@'%';
 FLUSH PRIVILEGES;
 ```
-> ตาราง (users/cameras/events/audit_logs) ถูกสร้างอัตโนมัติตอน API boot ครั้งแรก (`Base.metadata.create_all`) — ไม่ต้อง migrate มือ
+> **Schema = Alembic.** API container รัน `alembic upgrade head` อัตโนมัติก่อน serve
+> (migrate-then-serve) — DB ใหม่ถูกสร้างครบตอน boot ครั้งแรก ไม่ต้อง migrate มือ
 >
-> อัปเกรดจากเวอร์ชันก่อนมี camera enable/disable: รันครั้งเดียวบน DB เดิม —
-> `ALTER TABLE cameras ADD COLUMN enabled TINYINT(1) NOT NULL DEFAULT 1;`
-> (DB สร้างใหม่ไม่ต้องทำ — `create_all` ใส่คอลัมน์ให้แล้ว)
+> DB เดิมที่เคยสร้างด้วย `create_all` (ก่อนมี Alembic): นำเข้า Alembic ครั้งเดียว —
+> ให้แน่ใจว่ามีคอลัมน์ `cameras.enabled` แล้ว
+> (`ALTER TABLE cameras ADD COLUMN enabled TINYINT(1) NOT NULL DEFAULT 1;` ถ้ายังไม่มี)
+> จากนั้น `$CO run --rm api alembic stamp head` เพื่อ mark ว่าตรง head
+> (หรือ recreate DB ถ้า pilot data ทิ้งได้)
+>
+> เพิ่ม/แก้ schema ครั้งถัดไป: แก้ models → (จาก `apps/api/`) `alembic revision --autogenerate -m "..."`
+> → commit ไฟล์ migration → deploy (container `upgrade head` ให้เอง)
 
 ---
 
