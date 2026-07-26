@@ -44,7 +44,7 @@ export function useCameraSnapshot(
       else start();
     };
 
-    start();
+    onVisibility();
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       stop();

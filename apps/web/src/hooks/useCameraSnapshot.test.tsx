@@ -19,6 +19,10 @@ describe("useCameraSnapshot", () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
   });
 
   it("fetches a snapshot on mount and exposes the url", async () => {
@@ -38,5 +42,25 @@ describe("useCameraSnapshot", () => {
     await waitFor(() => expect(result.current.url).toBe("blob:fake-url"));
     unmount();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:fake-url");
+  });
+
+  it("does not poll on mount while document.hidden is true, and resumes on visibilitychange", async () => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+
+    renderHook(() => useCameraSnapshot("cam4", 2000));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchSnapshot).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await waitFor(() => expect(fetchSnapshot).toHaveBeenCalledWith("cam4"));
   });
 });
