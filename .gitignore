@@ -19,3 +19,6 @@ data/config/*
 .DS_Store
 # local/temp sqlite DBs (alembic verification, dev)
 apps/api/*.db
+# SDD workflow scratchpad (task briefs/reports/review-pkgs) — process artifacts, not repo docs.
+# Durable design docs live in docs/superpowers/ (plans + specs) instead.
+.superpowers/
