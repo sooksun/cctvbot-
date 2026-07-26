@@ -26,6 +26,12 @@ export default function AppHeader() {
           </span>
         </div>
         <div className="flex items-center gap-3 text-sm">
+          <Link
+            href="/account"
+            className="hidden text-slate-600 hover:text-slate-900 sm:inline"
+          >
+            เปลี่ยนรหัสผ่าน
+          </Link>
           <span className="text-slate-600">
             {username}
             {role ? (

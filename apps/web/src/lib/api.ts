@@ -166,6 +166,19 @@ export async function login(
   return data;
 }
 
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>("/api/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}
+
 export async function listEvents(filters: EventFilters = {}): Promise<Event[]> {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
