@@ -17,3 +17,5 @@ data/config/*
 **/.next/
 *.pyc
 .DS_Store
+# local/temp sqlite DBs (alembic verification, dev)
+apps/api/*.db
