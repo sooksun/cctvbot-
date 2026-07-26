@@ -8,6 +8,11 @@ import { useCameraSnapshot } from "@/hooks/useCameraSnapshot";
 
 const REFRESH_MS = 2000;
 
+function formatUpdatedAt(lastUpdated: number | null): string | null {
+  if (lastUpdated == null) return null;
+  return `อัปเดตเมื่อ ${new Date(lastUpdated).toLocaleTimeString("th-TH")}`;
+}
+
 function StatusBadges({ cam }: { cam: Camera }) {
   return (
     <span className="flex items-center gap-1.5">
@@ -42,7 +47,8 @@ function MonitorTile({
   onExpand: () => void;
   onClose: () => void;
 }) {
-  const { url, error } = useCameraSnapshot(cam.camera_id, REFRESH_MS);
+  const { url, error, lastUpdated } = useCameraSnapshot(cam.camera_id, REFRESH_MS);
+  const updatedLabel = formatUpdatedAt(lastUpdated);
   return (
     <>
       <button
@@ -61,12 +67,21 @@ function MonitorTile({
             </div>
           )}
         </div>
-        <div className="p-3">
+        <div className="space-y-1 p-3">
           <StatusBadges cam={cam} />
+          {updatedLabel ? (
+            <p className="text-xs text-slate-400">{updatedLabel}</p>
+          ) : null}
         </div>
       </button>
       {isExpanded ? (
-        <FullscreenView cam={cam} url={url} error={error} onClose={onClose} />
+        <FullscreenView
+          cam={cam}
+          url={url}
+          error={error}
+          lastUpdated={lastUpdated}
+          onClose={onClose}
+        />
       ) : null}
     </>
   );
@@ -76,13 +91,17 @@ function FullscreenView({
   cam,
   url,
   error,
+  lastUpdated,
   onClose,
 }: {
   cam: Camera;
   url: string | null;
   error: boolean;
+  lastUpdated: number | null;
   onClose: () => void;
 }) {
+  const updatedLabel = formatUpdatedAt(lastUpdated);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -116,6 +135,9 @@ function FullscreenView({
           {error ? "ไม่มีภาพจากกล้อง" : "กำลังโหลด..."}
         </div>
       )}
+      {updatedLabel ? (
+        <div className="mt-2 text-xs text-slate-300">{updatedLabel}</div>
+      ) : null}
     </div>
   );
 }

@@ -37,6 +37,30 @@ describe("useCameraSnapshot", () => {
     await waitFor(() => expect(result.current.error).toBe(true));
   });
 
+  it("lastUpdated is null before the first fetch resolves and a number after a successful fetch", async () => {
+    let resolveFetch: (value: string) => void = () => {};
+    fetchSnapshot.mockReset();
+    fetchSnapshot.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+    const { result } = renderHook(() => useCameraSnapshot("cam5", 2000));
+
+    expect(result.current.lastUpdated).toBeNull();
+
+    resolveFetch("blob:fake-url");
+    await waitFor(() => expect(result.current.url).toBe("blob:fake-url"));
+    expect(typeof result.current.lastUpdated).toBe("number");
+  });
+
+  it("does not update lastUpdated when the fetch rejects", async () => {
+    fetchSnapshot.mockRejectedValueOnce(new Error("boom"));
+    const { result } = renderHook(() => useCameraSnapshot("cam6", 2000));
+    await waitFor(() => expect(result.current.error).toBe(true));
+    expect(result.current.lastUpdated).toBeNull();
+  });
+
   it("revokes the object URL on unmount", async () => {
     const { result, unmount } = renderHook(() => useCameraSnapshot("cam3", 2000));
     await waitFor(() => expect(result.current.url).toBe("blob:fake-url"));

@@ -7,8 +7,14 @@ vi.mock("@/lib/api", () => ({
   listCameras: () => listCameras(),
   isAdmin: () => false,
 }));
+let snapshotMock: () => {
+  url: string | null;
+  error: boolean;
+  refresh: () => void;
+  lastUpdated: number | null;
+} = () => ({ url: null, error: true, refresh: vi.fn(), lastUpdated: null });
 vi.mock("@/hooks/useCameraSnapshot", () => ({
-  useCameraSnapshot: () => ({ url: null, error: true, refresh: vi.fn() }),
+  useCameraSnapshot: () => snapshotMock(),
 }));
 vi.mock("@/components/AuthGate", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -44,6 +50,12 @@ describe("MonitorPage", () => {
   beforeEach(() => {
     listCameras.mockReset();
     listCameras.mockResolvedValue(CAMS);
+    snapshotMock = () => ({
+      url: null,
+      error: true,
+      refresh: vi.fn(),
+      lastUpdated: null,
+    });
   });
 
   it("renders a tile per camera including offline/disabled", async () => {
@@ -61,5 +73,18 @@ describe("MonitorPage", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("shows the last-updated time when the snapshot is fresh", async () => {
+    const ts = 1700000000000;
+    snapshotMock = () => ({
+      url: "blob:x",
+      error: false,
+      refresh: vi.fn(),
+      lastUpdated: ts,
+    });
+    render(<MonitorPage />);
+    await waitFor(() => expect(screen.getByText("กล้องหน้า")).toBeInTheDocument());
+    expect(screen.getAllByText(/อัปเดตเมื่อ/).length).toBeGreaterThan(0);
   });
 });

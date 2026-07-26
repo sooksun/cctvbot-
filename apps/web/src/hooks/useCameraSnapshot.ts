@@ -8,9 +8,15 @@ import { fetchCameraSnapshotUrl } from "@/lib/api";
 export function useCameraSnapshot(
   cameraId: string,
   intervalMs: number,
-): { url: string | null; error: boolean; refresh: () => void } {
+): {
+  url: string | null;
+  error: boolean;
+  refresh: () => void;
+  lastUpdated: number | null;
+} {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const urlRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -20,6 +26,7 @@ export function useCameraSnapshot(
       urlRef.current = next;
       setUrl(next);
       setError(false);
+      setLastUpdated(Date.now());
     } catch {
       setError(true);
     }
@@ -56,5 +63,5 @@ export function useCameraSnapshot(
     };
   }, [refresh, intervalMs]);
 
-  return { url, error, refresh };
+  return { url, error, refresh, lastUpdated };
 }
