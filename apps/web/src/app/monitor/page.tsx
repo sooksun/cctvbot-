@@ -31,34 +31,58 @@ function StatusBadges({ cam }: { cam: Camera }) {
   );
 }
 
-function MonitorTile({ cam, onExpand }: { cam: Camera; onExpand: () => void }) {
+function MonitorTile({
+  cam,
+  isExpanded,
+  onExpand,
+  onClose,
+}: {
+  cam: Camera;
+  isExpanded: boolean;
+  onExpand: () => void;
+  onClose: () => void;
+}) {
   const { url, error } = useCameraSnapshot(cam.camera_id, REFRESH_MS);
   return (
-    <button
-      type="button"
-      onClick={onExpand}
-      aria-label={cam.name}
-      className="overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm hover:border-slate-300"
-    >
-      <div className="aspect-video overflow-hidden bg-slate-100">
-        {url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={`ภาพ ${cam.name}`} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-slate-400">
-            {error ? "ไม่มีภาพจากกล้อง" : "กำลังโหลด..."}
-          </div>
-        )}
-      </div>
-      <div className="p-3">
-        <StatusBadges cam={cam} />
-      </div>
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-label={cam.name}
+        className="overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm hover:border-slate-300"
+      >
+        <div className="aspect-video overflow-hidden bg-slate-100">
+          {url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt={`ภาพ ${cam.name}`} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-slate-400">
+              {error ? "ไม่มีภาพจากกล้อง" : "กำลังโหลด..."}
+            </div>
+          )}
+        </div>
+        <div className="p-3">
+          <StatusBadges cam={cam} />
+        </div>
+      </button>
+      {isExpanded ? (
+        <FullscreenView cam={cam} url={url} error={error} onClose={onClose} />
+      ) : null}
+    </>
   );
 }
 
-function FullscreenView({ cam, onClose }: { cam: Camera; onClose: () => void }) {
-  const { url, error } = useCameraSnapshot(cam.camera_id, REFRESH_MS);
+function FullscreenView({
+  cam,
+  url,
+  error,
+  onClose,
+}: {
+  cam: Camera;
+  url: string | null;
+  error: boolean;
+  onClose: () => void;
+}) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -100,7 +124,7 @@ function MonitorContent() {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Camera | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -135,15 +159,14 @@ function MonitorContent() {
               <MonitorTile
                 key={cam.camera_id}
                 cam={cam}
-                onExpand={() => setExpanded(cam)}
+                isExpanded={expandedId === cam.camera_id}
+                onExpand={() => setExpandedId(cam.camera_id)}
+                onClose={() => setExpandedId(null)}
               />
             ))}
           </div>
         )}
       </main>
-      {expanded ? (
-        <FullscreenView cam={expanded} onClose={() => setExpanded(null)} />
-      ) : null}
     </div>
   );
 }

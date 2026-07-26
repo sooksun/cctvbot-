@@ -51,6 +51,7 @@ describe("MonitorPage", () => {
     await waitFor(() => expect(screen.getByText("กล้องหน้า")).toBeInTheDocument());
     expect(screen.getByText("สนาม")).toBeInTheDocument();
     expect(screen.getByText("ปิดเฝ้าระวัง")).toBeInTheDocument();
+    expect(screen.getByText("ออฟไลน์")).toBeInTheDocument();
   });
 
   it("opens fullscreen on tile click and closes on Escape", async () => {
