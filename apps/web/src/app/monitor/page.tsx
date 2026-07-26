@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import AuthGate from "@/components/AuthGate";
 import { Camera, listCameras } from "@/lib/api";
@@ -46,7 +46,30 @@ function StatusBadges({ cam }: { cam: Camera }) {
   );
 }
 
-function MonitorTile({
+function TileButton({
+  cam,
+  onExpand,
+  children,
+}: {
+  cam: Camera;
+  onExpand: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      aria-label={cam.name}
+      className="overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm hover:border-slate-300"
+    >
+      {children}
+    </button>
+  );
+}
+
+// Owns useCameraSnapshot so it only polls once live has failed for this tile
+// — healthy live tiles never mount this, so they never poll the snapshot API.
+function SnapshotFallback({
   cam,
   isExpanded,
   onExpand,
@@ -58,22 +81,13 @@ function MonitorTile({
   onClose: () => void;
 }) {
   const { url, error, lastUpdated } = useCameraSnapshot(cam.camera_id, REFRESH_MS);
-  const [liveFailed, setLiveFailed] = useState(false);
-  const handleLiveError = useCallback(() => setLiveFailed(true), []);
   const stale = error && !!url;
   const updatedLabel = formatUpdatedAt(lastUpdated);
   return (
     <>
-      <button
-        type="button"
-        onClick={onExpand}
-        aria-label={cam.name}
-        className="overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm hover:border-slate-300"
-      >
+      <TileButton cam={cam} onExpand={onExpand}>
         <div className="aspect-video overflow-hidden bg-slate-100">
-          {!liveFailed ? (
-            <LiveVideo cameraId={cam.camera_id} onError={handleLiveError} />
-          ) : url ? (
+          {url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={url}
@@ -88,24 +102,67 @@ function MonitorTile({
         </div>
         <div className="space-y-1 p-3">
           <StatusBadges cam={cam} />
-          {!liveFailed ? (
-            <p className="text-xs font-medium text-red-600">🔴 สด</p>
-          ) : (
-            <>
-              {stale ? <StaleBadge /> : null}
-              {updatedLabel ? (
-                <p className="text-xs text-slate-400">{updatedLabel}</p>
-              ) : null}
-            </>
-          )}
+          {stale ? <StaleBadge /> : null}
+          {updatedLabel ? (
+            <p className="text-xs text-slate-400">{updatedLabel}</p>
+          ) : null}
         </div>
-      </button>
+      </TileButton>
       {isExpanded ? (
         <FullscreenView
           cam={cam}
           url={url}
           error={error}
           lastUpdated={lastUpdated}
+          onClose={onClose}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function MonitorTile({
+  cam,
+  isExpanded,
+  onExpand,
+  onClose,
+}: {
+  cam: Camera;
+  isExpanded: boolean;
+  onExpand: () => void;
+  onClose: () => void;
+}) {
+  const [liveFailed, setLiveFailed] = useState(false);
+  const handleLiveError = useCallback(() => setLiveFailed(true), []);
+
+  if (liveFailed) {
+    return (
+      <SnapshotFallback
+        cam={cam}
+        isExpanded={isExpanded}
+        onExpand={onExpand}
+        onClose={onClose}
+      />
+    );
+  }
+
+  return (
+    <>
+      <TileButton cam={cam} onExpand={onExpand}>
+        <div className="aspect-video overflow-hidden bg-slate-100">
+          <LiveVideo cameraId={cam.camera_id} onError={handleLiveError} />
+        </div>
+        <div className="space-y-1 p-3">
+          <StatusBadges cam={cam} />
+          <p className="text-xs font-medium text-red-600">🔴 สด</p>
+        </div>
+      </TileButton>
+      {isExpanded ? (
+        <FullscreenView
+          cam={cam}
+          url={null}
+          error={false}
+          lastUpdated={null}
           onClose={onClose}
         />
       ) : null}

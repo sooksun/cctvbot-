@@ -13,13 +13,22 @@ let snapshotMock: () => {
   refresh: () => void;
   lastUpdated: number | null;
 } = () => ({ url: null, error: true, refresh: vi.fn(), lastUpdated: null });
+const snapshotHookSpy = vi.fn();
 vi.mock("@/hooks/useCameraSnapshot", () => ({
-  useCameraSnapshot: () => snapshotMock(),
+  useCameraSnapshot: (cameraId: string, intervalMs: number) => {
+    snapshotHookSpy(cameraId, intervalMs);
+    return snapshotMock();
+  },
 }));
 vi.mock("@/components/AuthGate", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 vi.mock("@/components/AppHeader", () => ({ default: () => <div /> }));
+vi.mock("@/components/LiveVideo", () => ({
+  default: ({ cameraId, onError }: { cameraId: string; onError?: () => void }) => (
+    <button data-testid={`live-${cameraId}`} onClick={() => onError?.()}>live {cameraId}</button>
+  ),
+}));
 
 import MonitorPage from "@/app/monitor/page";
 
@@ -50,6 +59,7 @@ describe("MonitorPage", () => {
   beforeEach(() => {
     listCameras.mockReset();
     listCameras.mockResolvedValue(CAMS);
+    snapshotHookSpy.mockClear();
     snapshotMock = () => ({
       url: null,
       error: true,
@@ -89,7 +99,10 @@ describe("MonitorPage", () => {
     });
     render(<MonitorPage />);
     await waitFor(() => expect(screen.getByText("กล้องหน้า")).toBeInTheDocument());
-    expect(screen.getAllByText(/อัปเดตเมื่อ/).length).toBeGreaterThan(0);
+    // the timestamp only shows once a tile has fallen back from live to snapshot
+    fireEvent.click(screen.getByTestId("live-gate_front"));
+    fireEvent.click(screen.getByTestId("live-yard_1"));
+    await waitFor(() => expect(screen.getAllByText(/อัปเดตเมื่อ/).length).toBeGreaterThan(0));
   });
 
   it("marks a stale frame when error is true but a previous url still exists", async () => {
@@ -101,7 +114,9 @@ describe("MonitorPage", () => {
     });
     render(<MonitorPage />);
     await waitFor(() => expect(screen.getByText("กล้องหน้า")).toBeInTheDocument());
-    expect(screen.getAllByText(/ภาพไม่อัปเดต/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId("live-gate_front"));
+    fireEvent.click(screen.getByTestId("live-yard_1"));
+    await waitFor(() => expect(screen.getAllByText(/ภาพไม่อัปเดต/).length).toBeGreaterThan(0));
   });
 
   it("shows both the stale badge and the last-updated time for a stale frame", async () => {
@@ -114,7 +129,9 @@ describe("MonitorPage", () => {
     });
     render(<MonitorPage />);
     await waitFor(() => expect(screen.getByText("กล้องหน้า")).toBeInTheDocument());
-    expect(screen.getAllByText(/ภาพไม่อัปเดต/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId("live-gate_front"));
+    fireEvent.click(screen.getByTestId("live-yard_1"));
+    await waitFor(() => expect(screen.getAllByText(/ภาพไม่อัปเดต/).length).toBeGreaterThan(0));
     expect(screen.getAllByText(/อัปเดตเมื่อ/).length).toBeGreaterThan(0);
   });
 
@@ -143,6 +160,31 @@ describe("MonitorPage", () => {
       await vi.advanceTimersByTimeAsync(15000);
     });
     expect(listCameras).toHaveBeenCalledTimes(3);
+  });
+
+  it("shows live by default and falls back to snapshot on live error", async () => {
+    render(<MonitorPage />);
+    await waitFor(() => expect(screen.getByTestId("live-gate_front")).toBeInTheDocument());
+    // สด indicator visible while live
+    expect(screen.getAllByText("🔴 สด").length).toBeGreaterThan(0);
+    // trigger live failure for gate_front → fallback path renders (snapshot mock returns url/error)
+    fireEvent.click(screen.getByTestId("live-gate_front"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("live-gate_front")).toBeNull(),
+    );
+  });
+
+  it("does not poll the snapshot hook while live is healthy, and starts polling only after live fails", async () => {
+    render(<MonitorPage />);
+    await waitFor(() => expect(screen.getByTestId("live-gate_front")).toBeInTheDocument());
+    expect(snapshotHookSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("live-gate_front"));
+    await waitFor(() =>
+      expect(snapshotHookSpy).toHaveBeenCalledWith("gate_front", expect.any(Number)),
+    );
+    // the still-healthy yard_1 tile must remain untouched
+    expect(snapshotHookSpy).not.toHaveBeenCalledWith("yard_1", expect.any(Number));
   });
 
   it("clears the re-poll interval on unmount (no further listCameras calls, no setState-after-unmount)", async () => {
