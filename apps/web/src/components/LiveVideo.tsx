@@ -12,6 +12,20 @@ const WS_BASE =
 // counts as a load failure.
 const FAIL_TIMEOUT_MS = 10000;
 
+// How often to poll for the inner <video> element (created asynchronously
+// inside the web component's shadow DOM).
+const READY_POLL_INTERVAL_MS = 400;
+
+// After playback has started, how often to sample currentTime for the stall
+// watchdog.
+const STALL_CHECK_INTERVAL_MS = 1000;
+
+// How long currentTime may stay stuck (while not paused/ended) before a
+// previously-playing stream is treated as permanently dead. Kept generous so
+// normal brief buffering or go2rtc's own quick reconnect (which resumes
+// currentTime on its own) doesn't trip a false fallback to the snapshot.
+const STALL_TIMEOUT_MS = 12000;
+
 let modulePromise: Promise<void> | null = null;
 function ensureComponent(): Promise<void> {
   if (typeof window !== "undefined" && customElements.get("video-stream")) {
@@ -45,12 +59,17 @@ export default function LiveVideo({
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Guards onError so it fires at most once per mount, regardless of which
-    // of the three failure paths (module load, video error, timeout) trips.
+    // `settled` is the single terminal flag: only fail() ever sets it, so
+    // onError fires at most once across all paths (module load, never-started
+    // timeout, post-success video error, post-success stall). `playing`
+    // tracks whether succeed() has already run so it doesn't restart its own
+    // watchdog if the ready-poll callback somehow ticks again.
     let settled = false;
+    let playing = false;
     let el: VideoStreamElement | null = null;
     let failTimer: ReturnType<typeof setTimeout> | null = null;
     let readyPoll: ReturnType<typeof setInterval> | null = null;
+    let stallWatch: ReturnType<typeof setInterval> | null = null;
 
     const clearTimers = () => {
       if (failTimer) {
@@ -61,6 +80,10 @@ export default function LiveVideo({
         clearInterval(readyPoll);
         readyPoll = null;
       }
+      if (stallWatch) {
+        clearInterval(stallWatch);
+        stallWatch = null;
+      }
     };
 
     const fail = () => {
@@ -70,11 +93,32 @@ export default function LiveVideo({
       onError?.();
     };
 
+    // Once the stream has started playing, keep watching it: a stream can
+    // die well after its first frame, and the tile still needs to fall back
+    // to a snapshot in that case.
     const succeed = (video: HTMLVideoElement) => {
-      if (settled) return;
-      settled = true;
+      if (settled || playing) return;
+      playing = true;
       clearTimers();
       video.controls = false;
+
+      let lastCurrentTime = video.currentTime;
+      let stalledMs = 0;
+      stallWatch = setInterval(() => {
+        if (video.paused || video.ended) {
+          stalledMs = 0;
+          return;
+        }
+        if (video.currentTime > lastCurrentTime) {
+          lastCurrentTime = video.currentTime;
+          stalledMs = 0;
+          return;
+        }
+        stalledMs += STALL_CHECK_INTERVAL_MS;
+        if (stalledMs >= STALL_TIMEOUT_MS) {
+          fail();
+        }
+      }, STALL_CHECK_INTERVAL_MS);
     };
 
     ensureComponent()
@@ -92,7 +136,8 @@ export default function LiveVideo({
         failTimer = setTimeout(fail, FAIL_TIMEOUT_MS);
         // Poll for the inner <video> since it's created inside the web
         // component's shadow DOM asynchronously; also wire its error event
-        // as soon as it exists.
+        // as soon as it exists. That handler stays wired after succeed() so
+        // a stream that dies later (post-success) still triggers fail().
         readyPoll = setInterval(() => {
           const video = el?.querySelector("video");
           if (!video) return;
@@ -100,7 +145,7 @@ export default function LiveVideo({
           if (video.readyState >= 2) {
             succeed(video);
           }
-        }, 400);
+        }, READY_POLL_INTERVAL_MS);
       })
       .catch(fail);
 
