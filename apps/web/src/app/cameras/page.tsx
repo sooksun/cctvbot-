@@ -3,49 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import AuthGate from "@/components/AuthGate";
 import AppHeader from "@/components/AppHeader";
-import {
-  Camera,
-  fetchCameraSnapshotUrl,
-  isAdmin,
-  listCameras,
-  updateCamera,
-} from "@/lib/api";
+import { useCameraSnapshot } from "@/hooks/useCameraSnapshot";
+import { Camera, isAdmin, listCameras, updateCamera } from "@/lib/api";
 
 function CameraCard({ cam, onSaved }: { cam: Camera; onSaved: () => void }) {
-  const [snap, setSnap] = useState<string | null>(null);
+  const { url: snap, error: snapErr, refresh: loadSnap } = useCameraSnapshot(
+    cam.camera_id,
+    5000,
+  );
   const [name, setName] = useState(cam.name);
   const [zone, setZone] = useState(cam.zone ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  const loadSnap = useCallback(async () => {
-    setErr(null);
-    try {
-      const url = await fetchCameraSnapshotUrl(cam.camera_id);
-      setSnap((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return url;
-      });
-    } catch {
-      setSnap((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-      setErr("ไม่มีภาพจากกล้อง");
-    }
-  }, [cam.camera_id]);
-
-  useEffect(() => {
-    void loadSnap();
-    const t = setInterval(() => void loadSnap(), 5000);
-    return () => {
-      clearInterval(t);
-      setSnap((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-    };
-  }, [loadSnap]);
 
   async function save(patch: {
     name?: string;
@@ -76,7 +45,7 @@ function CameraCard({ cam, onSaved }: { cam: Camera; onSaved: () => void }) {
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-slate-400">
-            {err ?? "กำลังโหลด..."}
+            {snapErr ? "ไม่มีภาพจากกล้อง" : "กำลังโหลด..."}
           </div>
         )}
       </div>
