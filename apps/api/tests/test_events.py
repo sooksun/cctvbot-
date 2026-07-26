@@ -513,3 +513,39 @@ def test_snapshot_frigate_down_502(client, admin_headers, sample_event, monkeypa
     monkeypatch.setattr(cameras, "_fetch_frigate_snapshot", lambda cid: None)
     r = client.get("/api/cameras/cam_front_gate/snapshot", headers=admin_headers)
     assert r.status_code == 502
+
+
+def test_snapshot_allowed_for_viewer(client, sample_event, monkeypatch):
+    del sample_event
+    from app.auth import hash_password
+    from app.db import SessionLocal
+    from app.models import User
+    from app.routers import cameras
+
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.username == "viewer_snap").first():
+            db.add(
+                User(
+                    username="viewer_snap",
+                    password_hash=hash_password("viewpass123"),
+                    role="viewer",
+                )
+            )
+            db.commit()
+    finally:
+        db.close()
+    token = client.post(
+        "/api/auth/login",
+        json={"username": "viewer_snap", "password": "viewpass123"},
+    ).json()["access_token"]
+
+    monkeypatch.setattr(
+        cameras, "_fetch_frigate_snapshot", lambda cid: b"\xff\xd8\xfffakejpeg"
+    )
+    r = client.get(
+        "/api/cameras/cam_front_gate/snapshot",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    assert "image/jpeg" in r.headers.get("content-type", "")

@@ -133,7 +133,7 @@ def update_camera_config(
 def get_camera_snapshot(
     camera_id: str,
     db: Annotated[Session, Depends(get_db)],
-    user: Annotated[User, Depends(require_roles("admin"))],
+    user: Annotated[User, Depends(require_roles("admin", "viewer"))],
 ) -> Response:
     del user
     camera = db.query(Camera).filter(Camera.camera_id == camera_id).first()
