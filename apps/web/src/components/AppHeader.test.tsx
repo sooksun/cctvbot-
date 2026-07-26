@@ -28,4 +28,18 @@ describe("AppHeader", () => {
     render(<AppHeader />);
     expect(screen.queryByText("จัดการกล้อง")).toBeNull();
   });
+
+  it("shows the monitor link for a viewer", () => {
+    localStorage.setItem("cctvbot_role", "viewer");
+    render(<AppHeader />);
+    expect(screen.getByText("จอมอนิเตอร์")).toBeInTheDocument();
+    expect(screen.queryByText("จัดการกล้อง")).toBeNull();
+  });
+
+  it("shows the monitor link for an admin too", () => {
+    localStorage.setItem("cctvbot_role", "admin");
+    render(<AppHeader />);
+    expect(screen.getByText("จอมอนิเตอร์")).toBeInTheDocument();
+    expect(screen.getByText("จัดการกล้อง")).toBeInTheDocument();
+  });
 });
