@@ -6,11 +6,7 @@ cryptography==49.0.0
 pydantic==2.13.4
 pydantic-settings==2.14.2
 PyJWT==2.13.0
-# NOTE: bcrypt pinned <5 — passlib 1.7.4 (unmaintained) breaks on bcrypt 5 API
-# ("password cannot be longer than 72 bytes" ValueError). To move to bcrypt 5,
-# drop passlib and call bcrypt directly (see spawned task).
-passlib[bcrypt]==1.7.4
-bcrypt==4.2.1
+bcrypt==5.0.0
 httpx==0.28.1
 pytest==9.1.1
 pytest-asyncio==1.4.0

@@ -2,31 +2,41 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
 
+import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWTError
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
 from app.models import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 8
+
+# bcrypt hashes at most the first 72 bytes of the password; bcrypt 5 raises on
+# longer inputs where bcrypt 4 (via passlib) silently truncated. We keep that
+# truncate-to-72-bytes behavior explicitly so existing $2b$ hashes still verify
+# — no reseed needed.
+_BCRYPT_MAX_BYTES = 72
 
 bearer_scheme = HTTPBearer(auto_error=False)
 system_token_header = APIKeyHeader(name="X-System-Token", auto_error=False)
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    truncated = password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    return bcrypt.hashpw(truncated, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    truncated = plain.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    try:
+        return bcrypt.checkpw(truncated, hashed.encode("utf-8"))
+    except ValueError:
+        return False
 
 
 def create_access_token(
