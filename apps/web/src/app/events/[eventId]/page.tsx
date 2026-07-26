@@ -36,6 +36,8 @@ function EventDetailContent() {
     paths: Record<string, string | null>;
   } | null>(null);
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const [clipUrl, setClipUrl] = useState<string | null>(null);
+  const [clipLoading, setClipLoading] = useState(false);
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -47,6 +49,10 @@ function EventDetailContent() {
     setLoading(true);
     setError(null);
     setThumbUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setClipUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
@@ -85,6 +91,10 @@ function EventDetailContent() {
     void load();
     return () => {
       setThumbUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setClipUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
@@ -132,6 +142,22 @@ function EventDetailContent() {
       setError(err instanceof Error ? err.message : "บันทึกไม่สำเร็จ");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function loadClip() {
+    setClipLoading(true);
+    setError(null);
+    try {
+      const url = await fetchEvidenceFileBlobUrl(eventId, "clip.mp4");
+      setClipUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+    } catch {
+      setError("โหลดคลิปไม่สำเร็จ");
+    } finally {
+      setClipLoading(false);
     }
   }
 
@@ -288,6 +314,24 @@ function EventDetailContent() {
                     <p className="text-xs text-slate-400">
                       ไม่พบไฟล์ภาพย่อบนเซิร์ฟเวอร์
                     </p>
+                  ) : null}
+                  {admin && event.evidence.clip ? (
+                    clipUrl ? (
+                      <video
+                        src={clipUrl}
+                        controls
+                        className="max-h-72 w-full rounded-lg border border-slate-200 bg-black"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={clipLoading}
+                        onClick={() => void loadClip()}
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        {clipLoading ? "กำลังโหลดคลิป..." : "เล่นคลิป"}
+                      </button>
+                    )
                   ) : null}
                   <ul className="space-y-1 text-sm text-slate-600">
                     <li>
